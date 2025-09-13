@@ -1,12 +1,12 @@
 {
-  "name": "GV-Bud",
+  "name": "gvbud",
   "version": "1.0.0",
   "description": "Multi Device Whatsapp Bot",
   "main": "index.js",
   "scripts": {
-    "start": "pm2 start index.js --deep-monitoring --attach --name GV-Bud",
-    "stop": "pm2 stop GV-Bud",
-    "restart": "pm2 restart GV-Bud"
+    "start": "pm2 start index.js --deep-monitoring --attach --name gvbud",
+    "stop": "pm2 stop gvbud",
+    "restart": "pm2 restart gvbud"
   },
   "dependencies": {
     "@whiskeysockets/baileys": "^7.0.0-rc.2",
