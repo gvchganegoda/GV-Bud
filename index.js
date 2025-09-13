@@ -63,11 +63,11 @@ async function ensureSessionFile() {
 }
 
 async function connectToWA() {
-  console.log("Connecting GV-Bud 🧬...");
+  console.log("Connecting gvbud 🧬...");
   const { state, saveCreds } = await useMultiFileAuthState(path.join(__dirname, '/auth_info_baileys/'));
   const { version } = await fetchLatestBaileysVersion();
 
-  const GV-Bud = makeWASocket({
+  const gvbud = makeWASocket({
     logger: P({ level: 'silent' }),
     printQRInTerminal: false,
     browser: Browsers.macOS("Firefox"),
@@ -78,18 +78,18 @@ async function connectToWA() {
     generateHighQualityLinkPreview: true,
   });
 
-  GV-Bud.ev.on('connection.update', async (update) => {
+  gvbud.ev.on('connection.update', async (update) => {
     const { connection, lastDisconnect } = update;
     if (connection === 'close') {
       if (lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut) {
         connectToWA();
       }
     } else if (connection === 'open') {
-      console.log('✅ GV-Bud connected to WhatsApp');
+      console.log('✅ gvbud connected to WhatsApp');
 
-      const up = `GV-Bud connected ✅\n\nPREFIX: ${prefix}`;
-      await GV-Bud.sendMessage(ownerNumber[0] + "@s.whatsapp.net", {
-        image: { url: `https://github.com/gvchganegoda/GV-Bud/blob/main/images/Main%20Photo.jpg?raw=true` },
+      const up = `gvbud connected ✅\n\nPREFIX: ${prefix}`;
+      await gvbud.sendMessage(ownerNumber[0] + "@s.whatsapp.net", {
+        image: { url: `https://github.com/gvchganegoda/gvbud/blob/main/images/Main%20Photo.jpg?raw=true` },
         caption: up
       });
 
@@ -101,12 +101,12 @@ async function connectToWA() {
     }
   });
 
-  GV-Bud.ev.on('creds.update', saveCreds);
+  gvbud.ev.on('creds.update', saveCreds);
 
-  GV-Bud.ev.on('messages.upsert', async ({ messages }) => {
+  gvbud.ev.on('messages.upsert', async ({ messages }) => {
     for (const msg of messages) {
       if (msg.messageStubType === 68) {
-        await GV-Bud.sendMessageAck(msg.key);
+        await gvbud.sendMessageAck(msg.key);
       }
     }
 
@@ -116,7 +116,7 @@ async function connectToWA() {
     mek.message = getContentType(mek.message) === 'ephemeralMessage' ? mek.message.ephemeralMessage.message : mek.message;
     if (mek.key.remoteJid === 'status@broadcast') return;
 
-    const m = sms(GV-Bud, mek);
+    const m = sms(gvbud, mek);
     const type = getContentType(mek.message);
     const from = mek.key.remoteJid;
     const body = type === 'conversation' ? mek.message.conversation : mek.message[type]?.text || mek.message[type]?.caption || '';
@@ -125,30 +125,30 @@ async function connectToWA() {
     const args = body.trim().split(/ +/).slice(1);
     const q = args.join(' ');
 
-    const sender = mek.key.fromMe ? GV-Bud.user.id : (mek.key.participant || mek.key.remoteJid);
+    const sender = mek.key.fromMe ? gvbud.user.id : (mek.key.participant || mek.key.remoteJid);
     const senderNumber = sender.split('@')[0];
     const isGroup = from.endsWith('@g.us');
-    const botNumber = GV-Bud.user.id.split(':')[0];
+    const botNumber = gvbud.user.id.split(':')[0];
     const pushname = mek.pushName || 'Sin Nombre';
     const isMe = botNumber.includes(senderNumber);
     const isOwner = ownerNumber.includes(senderNumber) || isMe;
-    const botNumber2 = await jidNormalizedUser(GV-Bud.user.id);
+    const botNumber2 = await jidNormalizedUser(gvbud.user.id);
 
-    const groupMetadata = isGroup ? await GV-Bud.groupMetadata(from).catch(() => {}) : '';
+    const groupMetadata = isGroup ? await gvbud.groupMetadata(from).catch(() => {}) : '';
     const groupName = isGroup ? groupMetadata.subject : '';
     const participants = isGroup ? groupMetadata.participants : '';
     const groupAdmins = isGroup ? await getGroupAdmins(participants) : '';
     const isBotAdmins = isGroup ? groupAdmins.includes(botNumber2) : false;
     const isAdmins = isGroup ? groupAdmins.includes(sender) : false;
 
-    const reply = (text) => GV-Bud.sendMessage(from, { text }, { quoted: mek });
+    const reply = (text) => gvbud.sendMessage(from, { text }, { quoted: mek });
 
     if (isCmd) {
       const cmd = commands.find((c) => c.pattern === commandName || (c.alias && c.alias.includes(commandName)));
       if (cmd) {
-        if (cmd.react) GV-Bud.sendMessage(from, { react: { text: cmd.react, key: mek.key } });
+        if (cmd.react) gvbud.sendMessage(from, { react: { text: cmd.react, key: mek.key } });
         try {
-          cmd.function(GV-Bud, mek, m, {
+          cmd.function(gvbud, mek, m, {
             from, quoted: mek, body, isCmd, command: commandName, args, q,
             isGroup, sender, senderNumber, botNumber2, botNumber, pushname,
             isMe, isOwner, groupMetadata, groupName, participants, groupAdmins,
@@ -164,7 +164,7 @@ async function connectToWA() {
     for (const handler of replyHandlers) {
       if (handler.filter(replyText, { sender, message: mek })) {
         try {
-          await handler.function(GV-Bud, mek, m, {
+          await handler.function(gvbud, mek, m, {
             from, quoted: mek, body: replyText, sender, reply,
           });
           break;
@@ -179,7 +179,7 @@ async function connectToWA() {
 ensureSessionFile();
 
 app.get("/", (req, res) => {
-  res.send("Hey, GV-Bud started✅");
+  res.send("Hey, gvbud started✅");
 });
 
 app.listen(port, () => console.log(`Server listening on http://localhost:${port}`));
