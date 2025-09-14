@@ -1,40 +1,88 @@
+const { cmd } = require("../command");
+const yts = require("yt-search");
 const { exec } = require("yt-dlp-exec");
 const fs = require("fs");
 const path = require("path");
 
-module.exports = {
-    name: "song",
-    desc: "Download YouTube song",
+cmd(
+  {
+    pattern: "song",
+    react: "🎶",
+    desc: "Download Song",
     category: "download",
-    run: async (bot, message, args) => {
-        try {
-            const url = args[0];
-            if (!url) return message.reply("Send a valid YouTube link.");
-
-            // Temporary file name
-            const output = path.join(__dirname, `song.mp3`);
-
-            // Download audio only
-            await exec(url, {
-                output: output,
-                extractAudio: true,
-                audioFormat: "mp3",
-                audioQuality: 0
-            });
-
-            // Send the audio file
-            await bot.sendMessage(message.from, {
-                audio: fs.readFileSync(output),
-                mimetype: "audio/mpeg",
-                fileName: "song.mp3"
-            });
-
-            // Delete temp file
-            fs.unlinkSync(output);
-
-        } catch (err) {
-            console.error(err);
-            message.reply("Failed to download the song.");
-        }
+    filename: __filename,
+  },
+  async (
+    gvbud,
+    mek,
+    m,
+    {
+      from,
+      quoted,
+      body,
+      isCmd,
+      command,
+      args,
+      q,
+      reply,
     }
-};
+  ) => {
+    try {
+      if (!q) return reply("❌ *Please provide a song name or YouTube link*");
+
+      // Search YouTube
+      const search = await yts(q);
+      const data = search.videos[0];
+      if (!data) return reply("❌ *No results found*");
+
+      const url = data.url;
+
+      let desc = `
+Song downloader
+🎬 *Title:* ${data.title}
+⏱️ *Duration:* ${data.timestamp}
+📅 *Uploaded:* ${data.ago}
+👀 *Views:* ${data.views.toLocaleString()}
+🔗 *Watch Here:* ${data.url}
+`;
+
+      // Send video info
+      await gvbud.sendMessage(
+        from,
+        { image: { url: data.thumbnail }, caption: desc },
+        { quoted: mek }
+      );
+
+      // Temporary file
+      const filePath = path.join(__dirname, `${data.title}.mp3`);
+
+      // Download audio using yt-dlp
+      await exec(url, {
+        output: filePath,
+        extractAudio: true,
+        audioFormat: "mp3",
+        audioQuality: 0,
+      });
+
+      // Send audio
+      await gvbud.sendMessage(
+        from,
+        {
+          audio: fs.readFileSync(filePath),
+          mimetype: "audio/mpeg",
+          fileName: `${data.title}.mp3`,
+        },
+        { quoted: mek }
+      );
+
+      // Delete temp file
+      fs.unlinkSync(filePath);
+
+      reply("✅ *Your song has been downloaded!*");
+
+    } catch (e) {
+      console.log(e);
+      reply(`❌ *Error:* ${e.message} 😞`);
+    }
+  }
+);
