@@ -1,8 +1,7 @@
 const { cmd } = require("../command");
 const yts = require("yt-search");
-const ytdl = require("ytdl-core");
-const fs = require("fs");
 const path = require("path");
+const { exec } = require("child_process");
 
 cmd(
   {
@@ -12,59 +11,65 @@ cmd(
     category: "download",
     filename: __filename,
   },
-  async (gvbud, mek, m, { from, q, reply }) => {
+  async (gvbud, mek, m, { from, reply, q }) => {
     try {
-      if (!q) return reply("❌ Please provide a song name or YouTube link");
+      if (!q) return reply("❌ *Please provide a song name or YouTube link*");
 
+      // Search YouTube
       const search = await yts(q);
       const data = search.videos[0];
-      if (!data) return reply("❌ No results found");
+      if (!data) return reply("❌ *No video found*");
 
       const url = data.url;
+      const fileName = `${data.title}.mp3`.replace(/[\\\/:*?"<>|]/g, "");
+      const filePath = path.join(__dirname, fileName);
 
-      let desc = `
-🎬 Title: ${data.title}
-⏱ Duration: ${data.timestamp}
-📅 Uploaded: ${data.ago}
-👀 Views: ${data.views.toLocaleString()}
-🔗 Watch: ${data.url}
-`;
+      // Send basic info first
+      const desc = `
+🎬 *Title:* ${data.title}
+⏱️ *Duration:* ${data.timestamp}
+📅 *Uploaded:* ${data.ago}
+👀 *Views:* ${data.views.toLocaleString()}
+🔗 *Watch Here:* ${data.url}
+      `;
+      await gvbud.sendMessage(from, { image: { url: data.thumbnail }, caption: desc }, { quoted: mek });
 
-      await gvbud.sendMessage(
-        from,
-        { image: { url: data.thumbnail }, caption: desc },
-        { quoted: mek }
-      );
+      // Path to cookies file
+      const cookiesPath = path.join(__dirname, "cookies.txt");
 
-      // Temp file
-      const filePath = path.join(__dirname, `${data.title}.mp3`);
+      // Download audio using yt-dlp with cookies
+      const command = `yt-dlp "${url}" --extract-audio --audio-format mp3 --audio-quality 192K --cookies "${cookiesPath}" --output "${filePath}"`;
 
-      // Download audio
-      const stream = ytdl(url, { filter: "audioonly", quality: "highestaudio" });
-      const writeStream = fs.createWriteStream(filePath);
-      stream.pipe(writeStream);
+      exec(command, async (error) => {
+        if (error) {
+          console.log(error);
+          return reply(`❌ *Error downloading song:* ${error.message}`);
+        }
 
-      writeStream.on("finish", async () => {
+        // Send audio
+        await gvbud.sendMessage(
+          from,
+          { audio: { url: filePath }, mimetype: "audio/mpeg" },
+          { quoted: mek }
+        );
+
+        // Send document version
         await gvbud.sendMessage(
           from,
           {
-            audio: fs.readFileSync(filePath),
+            document: { url: filePath },
             mimetype: "audio/mpeg",
-            fileName: `${data.title}.mp3`,
+            fileName: fileName,
+            caption: "🎶 *Your song is ready!*",
           },
           { quoted: mek }
         );
-        fs.unlinkSync(filePath); // delete temp file
-        reply("✅ Your song is ready!");
-      });
 
-      stream.on("error", (err) => {
-        console.log(err);
-        reply("❌ Error downloading audio");
+        reply("✅ *Song downloaded successfully!*");
       });
     } catch (e) {
       console.log(e);
-      reply(`❌ Error: ${e.message}`);
+      reply(`❌ *Error:* ${e.message}`);
     }
   }
 );
