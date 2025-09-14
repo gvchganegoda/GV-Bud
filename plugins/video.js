@@ -1,19 +1,60 @@
 const { cmd } = require("../command");
-const yts = require("yt-search");
-const { ytmp3 } = require("@vreden/youtube_scraper");
+const axios = require("axios");
+const fs = require("fs");
+const path = require("path");
 
 cmd(
-  { pattern: "song", desc: "Download YouTube songs", category: "download" },
+  {
+    pattern: "movie",
+    react: "🎬",
+    desc: "Download a movie from a URL",
+    category: "download",
+    filename: __filename,
+  },
   async (gvbud, mek, m, { from, q, reply }) => {
-    if (!q) return reply("❌ Provide a song name or YouTube link");
+    try {
+      if (!q) return reply("❌ Please provide a movie URL");
 
-    const search = await yts(q);
-    const data = search.videos[0];
-    const song = await ytmp3(data.url, "192");
+      const url = q.trim();
+      const fileName = `Movie_${Date.now()}.mp4`;
+      const filePath = path.join(__dirname, fileName);
 
-    await gvbud.sendMessage(from, {
-      audio: { url: song.download.url },
-      mimetype: "audio/mpeg",
-    });
+      reply("⏳ Downloading movie, please wait...");
+
+      // Download movie
+      const response = await axios({
+        url,
+        method: "GET",
+        responseType: "stream",
+      });
+
+      const writer = fs.createWriteStream(filePath);
+      response.data.pipe(writer);
+
+      writer.on("finish", async () => {
+        // Send movie file to WhatsApp
+        await gvbud.sendMessage(
+          from,
+          {
+            document: { url: filePath },
+            mimetype: "video/mp4",
+            fileName: fileName,
+            caption: `🎬 Here is your movie!`,
+          },
+          { quoted: mek }
+        );
+
+        // Delete file after sending
+        fs.unlinkSync(filePath);
+      });
+
+      writer.on("error", (err) => {
+        console.log(err);
+        reply("❌ Error downloading the movie");
+      });
+    } catch (e) {
+      console.log(e);
+      reply(`❌ Error: ${e.message}`);
+    }
   }
 );
