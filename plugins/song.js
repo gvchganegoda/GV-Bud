@@ -2,45 +2,57 @@ const { cmd } = require("../command");
 const yts = require("yt-search");
 const ytdlp = require("yt-dlp-exec");
 const path = require("path");
+const fs = require("fs");
 
 cmd(
   {
     pattern: "song",
     react: "🎶",
-    desc: "Download Song using YouTube cookies",
+    desc: "Download YouTube Song",
     category: "download",
     filename: __filename,
   },
-  async (gvbud, mek, m, { from, body, reply, q }) => {
+  async (gvbud, mek, m, { from, reply, q }) => {
     try {
       if (!q) return reply("❌ *Please provide a song name or YouTube link*");
 
+      // Search YouTube
       const search = await yts(q);
-      const data = search.videos[0];
-      if (!data) return reply("❌ *No results found!*");
+      const video = search.videos[0];
+      if (!video) return reply("❌ *No video found!*");
 
-      const url = data.url;
-      const fileName = data.title.replace(/[\/\\?%*:|"<>]/g, "_") + ".mp3";
+      const url = video.url;
+      const fileName = video.title.replace(/[\/\\?%*:|"<>]/g, "_") + ".mp3";
       const filePath = path.join(__dirname, fileName);
-      const cookiesPath = path.join(__dirname, "cookies.txt");
 
       // Send video info first
-      let desc = `
-🎬 *Title:* ${data.title}
-⏱️ *Duration:* ${data.timestamp}
-📅 *Uploaded:* ${data.ago}
-👀 *Views:* ${data.views.toLocaleString()}
-🔗 *Watch Here:* ${data.url}
+      const desc = `
+🎬 *Title:* ${video.title}
+⏱️ *Duration:* ${video.timestamp}
+📅 *Uploaded:* ${video.ago}
+👀 *Views:* ${video.views.toLocaleString()}
+🔗 *Watch Here:* ${video.url}
 `;
-      await gvbud.sendMessage(from, { image: { url: data.thumbnail }, caption: desc }, { quoted: mek });
+      await gvbud.sendMessage(
+        from,
+        { image: { url: video.thumbnail }, caption: desc },
+        { quoted: mek }
+      );
 
-      // Download with yt-dlp-exec
+      // Limit duration to 30 mins
+      const durationParts = video.timestamp.split(":").map(Number);
+      const totalSeconds =
+        durationParts.length === 3
+          ? durationParts[0] * 3600 + durationParts[1] * 60 + durationParts[2]
+          : durationParts[0] * 60 + durationParts[1];
+      if (totalSeconds > 1800) return reply("⏳ *Sorry, audio longer than 30 minutes is not supported.*");
+
+      // Download audio with yt-dlp-exec
       await ytdlp(url, {
         extractAudio: true,
         audioFormat: "mp3",
         audioQuality: "192K",
         output: filePath,
-        cookies: cookiesPath,
       });
 
       // Send audio
@@ -53,9 +65,17 @@ cmd(
       // Send as document
       await gvbud.sendMessage(
         from,
-        { document: { url: `file://${filePath}` }, mimetype: "audio/mpeg", fileName: fileName, caption: "🎶 *Your song is ready!*" },
+        {
+          document: { url: `file://${filePath}` },
+          mimetype: "audio/mpeg",
+          fileName: fileName,
+          caption: "🎶 *Your song is ready to be played!*",
+        },
         { quoted: mek }
       );
+
+      // Delete local file to save space
+      fs.unlink(filePath, () => {});
 
       reply("✅ Song downloaded successfully!");
     } catch (e) {
