@@ -15,27 +15,25 @@ cmd(
     try {
       if (!q) return reply("❌ *Please provide a Google Drive file link*");
 
-      // Extract file ID from the link
-      let fileId;
+      // Extract file ID
       const match = q.match(/(?:file\/d\/|id=)([a-zA-Z0-9_-]+)/);
-      if (match && match[1]) {
-        fileId = match[1];
-      } else {
-        return reply("❌ *Invalid Google Drive link*");
-      }
+      if (!match || !match[1]) return reply("❌ *Invalid Google Drive link*");
+      const fileId = match[1];
 
       const url = `https://drive.google.com/uc?export=download&id=${fileId}`;
 
-      // Temporary file path
       const tempFilePath = path.join(__dirname, `${fileId}.tmp`);
 
+      // Download file
       const response = await axios({
         method: "GET",
-        url: url,
+        url,
         responseType: "stream",
+        maxRedirects: 5, // in case Google Drive redirects
       });
 
-      // Save file temporarily
+      if (!response.data) return reply("❌ *Failed to fetch the file*");
+
       const writer = fs.createWriteStream(tempFilePath);
       response.data.pipe(writer);
 
@@ -44,19 +42,23 @@ cmd(
         writer.on("error", reject);
       });
 
+      // Check file exists and size
+      if (!fs.existsSync(tempFilePath) || fs.statSync(tempFilePath).size === 0) {
+        return reply("❌ *Downloaded file is empty or not found*");
+      }
+
       // Send file via WhatsApp
       await gvbud.sendMessage(
         from,
         {
-          document: fs.createReadStream(tempFilePath),
+          document: { url: tempFilePath },
           mimetype: "application/octet-stream",
           fileName: "GoogleDriveFile",
-          caption: "📁 *Here is your downloaded file!*",
         },
         { quoted: mek }
       );
 
-      // Delete temporary file
+      // Delete temp file
       fs.unlinkSync(tempFilePath);
 
       return reply("✅ *Download complete!*");
