@@ -34,6 +34,7 @@
     "youtube-dl-exec": "^2.0.0",
     "@vreden/youtube_scraper": "^1.2.7",
     "yt-dlp-exec": "^1.0.2",
-    "fs-extra": "^11.3.1"
+    "fs-extra": "^11.3.1",
+    "axios": "^1.12.2"
   }
 }
