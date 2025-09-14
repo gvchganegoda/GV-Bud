@@ -1,10 +1,11 @@
-const { cmd, commands } = require("../command");
+const { cmd } = require("../command");
 const yts = require("yt-search");
-const { ytmp3 } = require("@vreden/youtube_scraper");
+const ytdl = require("ytdl-core");
 
 cmd(
   {
-    pattern: "song",
+    pattern: "song",          // main trigger
+    alias: ["mp3", "song"],  // <-- aliases
     react: "🎶",
     desc: "Download Song",
     category: "download",
@@ -13,49 +14,67 @@ cmd(
   async (gvbud, mek, m, { from, q, reply }) => {
     try {
       if (!q) return reply("❌ *Please provide a song name or YouTube link*");
-
       reply("⏳ Fetching your song…");
 
-      const search = await yts(q);
-      const data = search.videos[0];
-      if (!data) return reply("⚠️ No results found.");
+      // 1️⃣ Search YouTube or use direct link
+      let videoInfo;
+      if (ytdl.validateURL(q)) {
+        videoInfo = await ytdl.getInfo(q);
+      } else {
+        const search = await yts(q);
+        const data = search.videos[0];
+        if (!data) return reply("⚠️ No results found.");
+        videoInfo = await ytdl.getInfo(data.url);
+      }
 
-      const desc = `
-🎬 *Title:* ${data.title}
-⏱️ *Duration:* ${data.timestamp}
-📅 *Uploaded:* ${data.ago}
-👀 *Views:* ${data.views.toLocaleString()}
-🔗 *Watch Here:* ${data.url}
-`;
+      const details = videoInfo.videoDetails;
+      const durationSeconds = parseInt(details.lengthSeconds, 10);
 
-      await gvbud.sendMessage(from,
-        { image: { url: data.thumbnail }, caption: desc },
-        { quoted: mek }
-      );
-
-      const songData = await ytmp3(data.url, "192");
-      const audioUrl = songData?.download?.url || songData?.url;
-      if (!audioUrl) return reply("⚠️ Could not fetch the download link.");
-
-      const parts = data.timestamp.split(":").map(Number);
-      let totalSeconds = 0;
-      if (parts.length === 3) totalSeconds = parts[0]*3600 + parts[1]*60 + parts[2];
-      else if (parts.length === 2) totalSeconds = parts[0]*60 + parts[1];
-
-      if (totalSeconds > 1800) {
+      if (durationSeconds > 1800) {
         return reply("⏳ *Sorry, audio files longer than 30 minutes are not supported.*");
       }
 
-      const safeTitle = data.title.replace(/[<>:"/\\|?*]+/g, '');
+      const safeTitle = details.title.replace(/[<>:"/\\|?*]+/g, "");
+      const duration =
+        new Date(durationSeconds * 1000).toISOString().substr(11, 8);
 
-      await gvbud.sendMessage(from,
-        { audio: { url: audioUrl }, mimetype: "audio/mpeg" },
+      const desc = `
+🎬 *Title:* ${details.title}
+⏱️ *Duration:* ${duration}
+📅 *Uploaded:* ${details.uploadDate}
+👀 *Views:* ${parseInt(details.viewCount).toLocaleString()}
+🔗 *Watch Here:* ${details.video_url}
+`;
+
+      // 2️⃣ Send the info card
+      await gvbud.sendMessage(
+        from,
+        { image: { url: details.thumbnails.pop().url }, caption: desc },
         { quoted: mek }
       );
 
-      await gvbud.sendMessage(from,
+      // 3️⃣ Stream audio and build buffer
+      const audioStream = ytdl(details.video_url, {
+        filter: "audioonly",
+        quality: "highestaudio",
+      });
+
+      const chunks = [];
+      for await (const chunk of audioStream) chunks.push(chunk);
+      const audioBuffer = Buffer.concat(chunks);
+
+      // 4️⃣ Send as playable audio
+      await gvbud.sendMessage(
+        from,
+        { audio: audioBuffer, mimetype: "audio/mpeg" },
+        { quoted: mek }
+      );
+
+      // 5️⃣ Send as downloadable document
+      await gvbud.sendMessage(
+        from,
         {
-          document: { url: audioUrl },
+          document: audioBuffer,
           mimetype: "audio/mpeg",
           fileName: `${safeTitle}.mp3`,
           caption: "🎶 *Your song is ready to be played!*",
