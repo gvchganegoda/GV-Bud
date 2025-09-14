@@ -47,7 +47,7 @@ cmd(
           : durationParts[0] * 60 + durationParts[1];
       if (totalSeconds > 1800) return reply("⏳ *Sorry, audio longer than 30 minutes is not supported.*");
 
-      // Download audio with yt-dlp-exec
+      // Download audio using yt-dlp
       await ytdlp(url, {
         extractAudio: true,
         audioFormat: "mp3",
@@ -74,7 +74,7 @@ cmd(
         { quoted: mek }
       );
 
-      // Delete local file to save space
+      // Delete local file
       fs.unlink(filePath, () => {});
 
       reply("✅ Song downloaded successfully!");
