@@ -1,13 +1,12 @@
 const { cmd } = require("../command");
 const yts = require("yt-search");
 const ytdl = require("ytdl-core");
-const youtubedl = require("youtube-dl-exec");
-const fs = require("fs");
+const youtubedl = require("yt-dlp-exec"); // make sure to install this: npm install yt-dlp-exec
 
 cmd(
   {
     pattern: "song",
-    alias: ["mp3", "song"],
+    alias: ["mp3", "music"],
     react: "🎶",
     desc: "Download Song",
     category: "download",
@@ -16,12 +15,11 @@ cmd(
   async (gvbud, mek, m, { from, q, reply }) => {
     try {
       if (!q) return reply("❌ *Please provide a song name or YouTube link*");
+
       reply("⏳ Fetching your song…");
 
       // 1️⃣ Search YouTube or use direct link
       let videoUrl;
-      let videoDetails;
-
       if (ytdl.validateURL(q)) {
         videoUrl = q;
       } else {
@@ -31,99 +29,79 @@ cmd(
         videoUrl = data.url;
       }
 
-      // Try ytdl-core first
-      try {
-        const videoInfo = await ytdl.getInfo(videoUrl);
-        videoDetails = videoInfo.videoDetails;
-      } catch (err) {
-        console.warn("ytdl-core failed, using youtube-dl-exec as backup", err);
-        reply("⚠️ ytdl-core failed. Trying backup method…");
-
-        const info = await youtubedl(videoUrl, { dumpJson: true });
-        videoDetails = {
-          title: info.title,
-          video_url: info.webpage_url,
-          lengthSeconds: info.duration,
-          uploadDate: info.upload_date || "Unknown",
-          viewCount: info.view_count || 0,
-          thumbnails: info.thumbnails || [],
-        };
-      }
-
-      const durationSeconds = parseInt(videoDetails.lengthSeconds, 10);
-      if (durationSeconds > 600) { // Increased duration to 600 seconds
-        return reply("⏳ *Sorry, audio files longer than 10 minutes are not supported.*");
-      }
-
-      const safeTitle = videoDetails.title.replace(/[<>:"/\\|?*]+/g, "");
-      const duration =
-        new Date(durationSeconds * 1000).toISOString().substr(11, 8);
-
-      const desc = `
-🎬 *Title:* ${videoDetails.title}
-⏱️ *Duration:* ${duration}
-📅 *Uploaded:* ${videoDetails.uploadDate}
-👀 *Views:* ${parseInt(videoDetails.viewCount).toLocaleString()}
-🔗 *Watch Here:* ${videoDetails.video_url}
-`;
-
-      // 2️⃣ Send the info card
-      await gvbud.sendMessage(
-        from,
-        { image: { url: videoDetails.thumbnails.pop()?.url }, caption: desc },
-        { quoted: mek }
-      );
-
-      // 3️⃣ Stream audio using ytdl-core with error handling
+      // 2️⃣ Try downloading with yt-dlp first
       let audioBuffer;
       try {
-        const audioStream = ytdl(videoDetails.video_url, {
-          filter: "audioonly",
-          quality: "highestaudio",
-        }).on("error", (err) => {
-          throw err;
+        const info = await youtubedl(videoUrl, {
+          dumpJson: true,
+          format: "bestaudio",
+          output: "-",
+          // cookies: "./cookies.txt" // optional for protected videos
         });
 
-        const chunks = [];
-        for await (const chunk of audioStream) chunks.push(chunk);
-        audioBuffer = Buffer.concat(chunks);
+        // If yt-dlp provides a direct URL, fetch the audio
+        if (info.url) {
+          const stream = ytdl(info.url, { filter: "audioonly", quality: "highestaudio" });
+          const chunks = [];
+          for await (const chunk of stream) chunks.push(chunk);
+          audioBuffer = Buffer.concat(chunks);
+        }
       } catch (err) {
-        console.warn("ytdl-core download failed, using youtube-dl-exec backup", err);
+        console.warn("yt-dlp failed, falling back to ytdl-core:", err.message);
 
-        const tmpFile = `/tmp/${safeTitle}.mp3`;
-        await youtubedl(videoDetails.video_url, {
-          output: tmpFile,
-          extractAudio: true,
-          audioFormat: "mp3",
-          audioQuality: 0, // best
-        });
+        // 3️⃣ Fallback to ytdl-core
+        const videoInfo = await ytdl.getInfo(videoUrl);
+        const durationSeconds = parseInt(videoInfo.videoDetails.lengthSeconds, 10);
+        if (durationSeconds > 600) return reply("⏳ *Audio longer than 10 minutes is not supported.*");
 
-        audioBuffer = fs.readFileSync(tmpFile);
+        const stream = ytdl(videoUrl, { filter: "audioonly", quality: "highestaudio" });
+        const chunks = [];
+        for await (const chunk of stream) chunks.push(chunk);
+        audioBuffer = Buffer.concat(chunks);
+
+        // Update details for messages
+        var details = videoInfo.videoDetails;
       }
 
-      // 4️⃣ Send as playable audio
-      await gvbud.sendMessage(
-        from,
-        { audio: audioBuffer, mimetype: "audio/mpeg" },
-        { quoted: mek }
-      );
+      // 4️⃣ Prepare metadata
+      const detailsData = details || {
+        title: "Unknown Title",
+        thumbnails: [{ url: "" }],
+        viewCount: 0,
+        uploadDate: "Unknown",
+        video_url: videoUrl
+      };
 
-      // 5️⃣ Send as downloadable document
-      await gvbud.sendMessage(
-        from,
-        {
-          document: audioBuffer,
-          mimetype: "audio/mpeg",
-          fileName: `${safeTitle}.mp3`,
-          caption: "🎶 *Your song is ready to be played!*",
-        },
-        { quoted: mek }
-      );
+      const safeTitle = detailsData.title.replace(/[<>:"/\\|?*]+/g, "");
+      const desc = `
+🎬 *Title:* ${detailsData.title}
+⏱️ *Duration:* ${detailsData.lengthSeconds ? new Date(parseInt(detailsData.lengthSeconds, 10)*1000).toISOString().substr(11,8) : "Unknown"}
+📅 *Uploaded:* ${detailsData.uploadDate}
+👀 *Views:* ${parseInt(detailsData.viewCount || 0).toLocaleString()}
+🔗 *Watch Here:* ${detailsData.video_url}
+`;
+
+      // 5️⃣ Send info card
+      await gvbud.sendMessage(from, {
+        image: { url: detailsData.thumbnails.pop().url },
+        caption: desc
+      }, { quoted: mek });
+
+      // 6️⃣ Send playable audio
+      await gvbud.sendMessage(from, { audio: audioBuffer, mimetype: "audio/mpeg" }, { quoted: mek });
+
+      // 7️⃣ Send downloadable document
+      await gvbud.sendMessage(from, {
+        document: audioBuffer,
+        mimetype: "audio/mpeg",
+        fileName: `${safeTitle}.mp3`,
+        caption: "🎶 *Your song is ready to play!*"
+      }, { quoted: mek });
 
       reply("✅ Thank you for using GV-Bud");
     } catch (e) {
       console.error("Download error:", e);
-      reply(`❌ *Error:* ${e?.message || e}`);
+      reply("❌ Unable to download this song. It may be blocked or removed.");
     }
   }
 );
