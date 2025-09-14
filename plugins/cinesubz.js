@@ -1,17 +1,16 @@
-const { cmd, commands } = require("../command");
-const yts = require("yt-search");
-const { ytmp3 } = require("@vreden/youtube_scraper");
+const { cmd } = require("../command");
+const { fetchMovieDetails, fetchTVShowDetails, fetchEpisodeDetails } = require("./cinesubz-plugin"); // your plugin path
 
 cmd(
   {
-    pattern: "song",
-    react: "🎶",
-    desc: "Download Song",
+    pattern: "cinesubz",
+    react: "🎬",
+    desc: "Fetch movies or TV series from Cinesubz",
     category: "download",
     filename: __filename,
   },
   async (
-    danuwa,
+    gvbud,
     mek,
     m,
     {
@@ -22,82 +21,50 @@ cmd(
       command,
       args,
       q,
-      isGroup,
-      sender,
-      senderNumber,
-      botNumber2,
-      botNumber,
-      pushname,
-      isMe,
-      isOwner,
-      groupMetadata,
-      groupName,
-      participants,
-      groupAdmins,
-      isBotAdmins,
-      isAdmins,
       reply,
     }
   ) => {
     try {
-      if (!q) return reply("❌ *Please provide a song name or YouTube link*");
+      if (!q) return reply("❌ Please provide a movie/TV show ID");
 
-      const search = await yts(q);
-      const data = search.videos[0];
-      const url = data.url;
+      const type = args[0]?.toLowerCase(); // "movie", "tvshow", or "episode"
+      const id = args[1]; // ID of the movie, tv show, or episode
 
-      let desc = `
-Song downloader
-🎬 *Title:* ${data.title}
-⏱️ *Duration:* ${data.timestamp}
-📅 *Uploaded:* ${data.ago}
-👀 *Views:* ${data.views.toLocaleString()}
-🔗 *Watch Here:* ${data.url}
-`;
-
-      await danuwa.sendMessage(
-        from,
-        { image: { url: data.thumbnail }, caption: desc },
-        { quoted: mek }
-      );
-
-      const quality = "192";
-      const songData = await ytmp3(url, quality);
-
-      let durationParts = data.timestamp.split(":").map(Number);
-      let totalSeconds =
-        durationParts.length === 3
-          ? durationParts[0] * 3600 + durationParts[1] * 60 + durationParts[2]
-          : durationParts[0] * 60 + durationParts[1];
-
-      if (totalSeconds > 1800) {
-        return reply("⏳ *Sorry, audio files longer than 30 minutes are not supported.*");
+      if (!type || !id) {
+        return reply("❌ Usage: cinesubz <movie|tvshow|episode> <id>");
       }
 
-      await danuwa.sendMessage(
+      let data;
+
+      if (type === "movie") {
+        data = await fetchMovieDetails(id);
+      } else if (type === "tvshow") {
+        data = await fetchTVShowDetails(id);
+      } else if (type === "episode") {
+        data = await fetchEpisodeDetails(id);
+      } else {
+        return reply("❌ Invalid type. Use movie, tvshow, or episode.");
+      }
+
+      let message = `🎬 *Title:* ${data.title || data.name}\n`;
+      if (data.release) message += `📅 *Released:* ${data.release}\n`;
+      if (data.duration) message += `⏱️ *Duration:* ${data.duration}\n`;
+      if (data.downloadLinks) {
+        message += `🔗 *Download Links:*\n`;
+        data.downloadLinks.forEach((link, i) => {
+          message += `${i + 1}. ${link}\n`;
+        });
+      }
+
+      await gvbud.sendMessage(
         from,
-        {
-          audio: { url: songData.download.url },
-          mimetype: "audio/mpeg",
-        },
+        { text: message },
         { quoted: mek }
       );
 
-      await danuwa.sendMessage(
-        from,
-        {
-          document: { url: songData.download.url },
-          mimetype: "audio/mpeg",
-          fileName: `${data.title}.mp3`,
-          caption: "🎶 *Your song is ready to be played!*",
-        },
-        { quoted: mek }
-      );
-
-      return reply("✅ Thank you");
-    } catch (e) {
-      console.log(e);
-      reply(`❌ *Error:* ${e.message} 😞`);
+    } catch (error) {
+      console.log(error);
+      reply(`❌ Error: ${error.message}`);
     }
   }
 );
