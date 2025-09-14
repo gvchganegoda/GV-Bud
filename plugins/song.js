@@ -10,44 +10,17 @@ cmd(
     category: "download",
     filename: __filename,
   },
-  async (
-    gvbud,
-    mek,
-    m,
-    {
-      from,
-      quoted,
-      body,
-      isCmd,
-      command,
-      args,
-      q,
-      isGroup,
-      sender,
-      senderNumber,
-      botNumber2,
-      botNumber,
-      pushname,
-      isMe,
-      isOwner,
-      groupMetadata,
-      groupName,
-      participants,
-      groupAdmins,
-      isBotAdmins,
-      isAdmins,
-      reply,
-    }
-  ) => {
+  async (gvbud, mek, m, { from, q, reply }) => {
     try {
       if (!q) return reply("❌ *Please provide a song name or YouTube link*");
 
+      reply("⏳ Fetching your song…");
+
       const search = await yts(q);
       const data = search.videos[0];
-      const url = data.url;
+      if (!data) return reply("⚠️ No results found.");
 
-      let desc = `
-Song downloader
+      const desc = `
 🎬 *Title:* ${data.title}
 ⏱️ *Duration:* ${data.timestamp}
 📅 *Uploaded:* ${data.ago}
@@ -55,49 +28,45 @@ Song downloader
 🔗 *Watch Here:* ${data.url}
 `;
 
-      await gvbud.sendMessage(
-        from,
+      await gvbud.sendMessage(from,
         { image: { url: data.thumbnail }, caption: desc },
         { quoted: mek }
       );
 
-      const quality = "192";
-      const songData = await ytmp3(url, quality);
+      const songData = await ytmp3(data.url, "192");
+      const audioUrl = songData?.download?.url || songData?.url;
+      if (!audioUrl) return reply("⚠️ Could not fetch the download link.");
 
-      let durationParts = data.timestamp.split(":").map(Number);
-      let totalSeconds =
-        durationParts.length === 3
-          ? durationParts[0] * 3600 + durationParts[1] * 60 + durationParts[2]
-          : durationParts[0] * 60 + durationParts[1];
+      const parts = data.timestamp.split(":").map(Number);
+      let totalSeconds = 0;
+      if (parts.length === 3) totalSeconds = parts[0]*3600 + parts[1]*60 + parts[2];
+      else if (parts.length === 2) totalSeconds = parts[0]*60 + parts[1];
 
       if (totalSeconds > 1800) {
         return reply("⏳ *Sorry, audio files longer than 30 minutes are not supported.*");
       }
 
-      await gvbud.sendMessage(
-        from,
-        {
-          audio: { url: songData.download.url },
-          mimetype: "audio/mpeg",
-        },
+      const safeTitle = data.title.replace(/[<>:"/\\|?*]+/g, '');
+
+      await gvbud.sendMessage(from,
+        { audio: { url: audioUrl }, mimetype: "audio/mpeg" },
         { quoted: mek }
       );
 
-      await gvbud.sendMessage(
-        from,
+      await gvbud.sendMessage(from,
         {
-          document: { url: songData.download.url },
+          document: { url: audioUrl },
           mimetype: "audio/mpeg",
-          fileName: `${data.title}.mp3`,
+          fileName: `${safeTitle}.mp3`,
           caption: "🎶 *Your song is ready to be played!*",
         },
         { quoted: mek }
       );
 
-      return reply("✅ Thank you for using GV-Bud");
+      reply("✅ Thank you for using GV-Bud");
     } catch (e) {
-      console.log(e);
-      reply(`❌ *Error:* ${e.message} 😞`);
+      console.error("Download error:", e);
+      reply(`❌ *Error:* ${e?.message || e}`);
     }
   }
 );
