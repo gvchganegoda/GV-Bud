@@ -13,26 +13,36 @@ cmd(
   },
   async (gvbud, mek, m, { from, reply, q }) => {
     try {
-      if (!q) return reply("❌ *Please provide a Google Drive file link*");
+      if (!q) return reply("❌ *Please provide a Google Drive link*");
 
-      // Extract file ID
       const match = q.match(/(?:file\/d\/|id=)([a-zA-Z0-9_-]+)/);
       if (!match || !match[1]) return reply("❌ *Invalid Google Drive link*");
+
       const fileId = match[1];
-
-      const url = `https://drive.google.com/uc?export=download&id=${fileId}`;
-
       const tempFilePath = path.join(__dirname, `${fileId}.tmp`);
 
-      // Download file
+      // First request to get confirm token for large files
+      const initialResponse = await axios.get(
+        `https://drive.google.com/uc?export=download&id=${fileId}`,
+        { responseType: "arraybuffer", maxRedirects: 0, validateStatus: null }
+      );
+
+      const html = initialResponse.data.toString("utf8");
+      let confirmToken = null;
+      const tokenMatch = html.match(/confirm=([0-9A-Za-z_]+)&/);
+      if (tokenMatch) confirmToken = tokenMatch[1];
+
+      const downloadUrl = confirmToken
+        ? `https://drive.google.com/uc?export=download&confirm=${confirmToken}&id=${fileId}`
+        : `https://drive.google.com/uc?export=download&id=${fileId}`;
+
+      // Download file stream
       const response = await axios({
         method: "GET",
-        url,
+        url: downloadUrl,
         responseType: "stream",
-        maxRedirects: 5, // in case Google Drive redirects
+        maxRedirects: 5,
       });
-
-      if (!response.data) return reply("❌ *Failed to fetch the file*");
 
       const writer = fs.createWriteStream(tempFilePath);
       response.data.pipe(writer);
@@ -42,12 +52,7 @@ cmd(
         writer.on("error", reject);
       });
 
-      // Check file exists and size
-      if (!fs.existsSync(tempFilePath) || fs.statSync(tempFilePath).size === 0) {
-        return reply("❌ *Downloaded file is empty or not found*");
-      }
-
-      // Send file via WhatsApp
+      // Send file
       await gvbud.sendMessage(
         from,
         {
@@ -58,9 +63,7 @@ cmd(
         { quoted: mek }
       );
 
-      // Delete temp file
       fs.unlinkSync(tempFilePath);
-
       return reply("✅ *Download complete!*");
     } catch (e) {
       console.log(e);
