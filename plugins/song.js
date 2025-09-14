@@ -1,102 +1,105 @@
 const { cmd } = require("../command");
 const yts = require("yt-search");
 const ytdl = require("ytdl-core");
-const youtubedl = require("yt-dlp-exec"); // make sure to install this: npm install yt-dlp-exec
+const fs = require("fs");
+const path = require("path");
 
 cmd(
   {
     pattern: "song",
-    alias: ["mp3", "music"],
+    alias: ["mp3"],
     react: "🎶",
-    desc: "Download Song",
+    desc: "Download YouTube Song",
     category: "download",
     filename: __filename,
   },
   async (gvbud, mek, m, { from, q, reply }) => {
     try {
       if (!q) return reply("❌ *Please provide a song name or YouTube link*");
-
       reply("⏳ Fetching your song…");
 
-      // 1️⃣ Search YouTube or use direct link
       let videoUrl;
+
+      // Check if input is a valid YouTube URL
       if (ytdl.validateURL(q)) {
         videoUrl = q;
       } else {
         const search = await yts(q);
-        const data = search.videos[0];
-        if (!data) return reply("⚠️ No results found.");
-        videoUrl = data.url;
+        const video = search.videos[0];
+        if (!video) return reply("⚠️ No results found.");
+        videoUrl = video.url;
       }
 
-      // 2️⃣ Try downloading with yt-dlp first
-      let audioBuffer;
-      try {
-        const info = await youtubedl(videoUrl, {
-          dumpJson: true,
-          format: "bestaudio",
-          output: "-",
-          // cookies: "./cookies.txt" // optional for protected videos
-        });
+      const info = await ytdl.getInfo(videoUrl);
+      const details = info.videoDetails;
+      const durationSeconds = parseInt(details.lengthSeconds, 10);
 
-        // If yt-dlp provides a direct URL, fetch the audio
-        if (info.url) {
-          const stream = ytdl(info.url, { filter: "audioonly", quality: "highestaudio" });
-          const chunks = [];
-          for await (const chunk of stream) chunks.push(chunk);
-          audioBuffer = Buffer.concat(chunks);
-        }
-      } catch (err) {
-        console.warn("yt-dlp failed, falling back to ytdl-core:", err.message);
-
-        // 3️⃣ Fallback to ytdl-core
-        const videoInfo = await ytdl.getInfo(videoUrl);
-        const durationSeconds = parseInt(videoInfo.videoDetails.lengthSeconds, 10);
-        if (durationSeconds > 600) return reply("⏳ *Audio longer than 10 minutes is not supported.*");
-
-        const stream = ytdl(videoUrl, { filter: "audioonly", quality: "highestaudio" });
-        const chunks = [];
-        for await (const chunk of stream) chunks.push(chunk);
-        audioBuffer = Buffer.concat(chunks);
-
-        // Update details for messages
-        var details = videoInfo.videoDetails;
+      // Limit for long videos (adjust if needed)
+      if (durationSeconds > 600) {
+        return reply("⏳ *Sorry, audio files longer than 10 minutes are not supported.*");
       }
 
-      // 4️⃣ Prepare metadata
-      const detailsData = details || {
-        title: "Unknown Title",
-        thumbnails: [{ url: "" }],
-        viewCount: 0,
-        uploadDate: "Unknown",
-        video_url: videoUrl
-      };
+      const safeTitle = details.title.replace(/[<>:"/\\|?*]+/g, "");
+      const duration = new Date(durationSeconds * 1000).toISOString().substr(11, 8);
 
-      const safeTitle = detailsData.title.replace(/[<>:"/\\|?*]+/g, "");
       const desc = `
-🎬 *Title:* ${detailsData.title}
-⏱️ *Duration:* ${detailsData.lengthSeconds ? new Date(parseInt(detailsData.lengthSeconds, 10)*1000).toISOString().substr(11,8) : "Unknown"}
-📅 *Uploaded:* ${detailsData.uploadDate}
-👀 *Views:* ${parseInt(detailsData.viewCount || 0).toLocaleString()}
-🔗 *Watch Here:* ${detailsData.video_url}
+🎬 *Title:* ${details.title}
+⏱️ *Duration:* ${duration}
+📅 *Uploaded:* ${details.uploadDate}
+👀 *Views:* ${parseInt(details.viewCount).toLocaleString()}
+🔗 *Watch Here:* ${details.video_url}
 `;
 
-      // 5️⃣ Send info card
-      await gvbud.sendMessage(from, {
-        image: { url: detailsData.thumbnails.pop().url },
-        caption: desc
-      }, { quoted: mek });
+      // Send info card
+      await gvbud.sendMessage(
+        from,
+        { image: { url: details.thumbnails.pop().url }, caption: desc },
+        { quoted: mek }
+      );
 
-      // 6️⃣ Send playable audio
-      await gvbud.sendMessage(from, { audio: audioBuffer, mimetype: "audio/mpeg" }, { quoted: mek });
+      // Prepare temporary file path
+      const tmpFile = path.join(__dirname, `${safeTitle}.mp3`);
 
-      // 7️⃣ Send downloadable document
-      await gvbud.sendMessage(from, {
-        document: audioBuffer,
-        mimetype: "audio/mpeg",
-        fileName: `${safeTitle}.mp3`,
-        caption: "🎶 *Your song is ready to play!*"
-      }, { quoted: mek });
+      // Download audio using ytdl-core
+      const audioStream = ytdl(videoUrl, {
+        filter: "audioonly",
+        quality: "highestaudio",
+        highWaterMark: 1 << 25, // 32MB buffer to avoid throttling
+      });
+
+      const writeStream = fs.createWriteStream(tmpFile);
+      audioStream.pipe(writeStream);
+
+      // Wait for download to finish
+      await new Promise((resolve, reject) => {
+        audioStream.on("error", (err) => reject(err));
+        writeStream.on("finish", () => resolve());
+        writeStream.on("error", (err) => reject(err));
+      });
+
+      const audioBuffer = fs.readFileSync(tmpFile);
+
+      // Send audio
+      await gvbud.sendMessage(
+        from,
+        { audio: audioBuffer, mimetype: "audio/mpeg" },
+        { quoted: mek }
+      );
+
+      // Send as document for download
+      await gvbud.sendMessage(
+        from,
+        {
+          document: audioBuffer,
+          mimetype: "audio/mpeg",
+          fileName: `${safeTitle}.mp3`,
+          caption: "🎶 *Your song is ready!*",
+        },
+        { quoted: mek }
+      );
+
+      // Clean up temp file
+      fs.unlinkSync(tmpFile);
 
       reply("✅ Thank you for using GV-Bud");
     } catch (e) {
