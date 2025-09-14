@@ -1,6 +1,6 @@
 const { cmd } = require("../command");
 const yts = require("yt-search");
-const { exec } = require("child_process");
+const ytdlp = require("yt-dlp-exec");
 const path = require("path");
 
 cmd(
@@ -15,7 +15,6 @@ cmd(
     try {
       if (!q) return reply("❌ *Please provide a song name or YouTube link*");
 
-      // Search YouTube
       const search = await yts(q);
       const data = search.videos[0];
       if (!data) return reply("❌ *No results found!*");
@@ -23,6 +22,7 @@ cmd(
       const url = data.url;
       const fileName = data.title.replace(/[\/\\?%*:|"<>]/g, "_") + ".mp3";
       const filePath = path.join(__dirname, fileName);
+      const cookiesPath = path.join(__dirname, "cookies.txt");
 
       // Send video info first
       let desc = `
@@ -34,40 +34,30 @@ cmd(
 `;
       await gvbud.sendMessage(from, { image: { url: data.thumbnail }, caption: desc }, { quoted: mek });
 
-      // Download using yt-dlp with cookies
-      const cookiesPath = path.join(__dirname, "cookies.txt");
-
-      // Command
-      const command = `yt-dlp "${url}" --extract-audio --audio-format mp3 --audio-quality 96K --cookies "${cookiesPath}" --output "${filePath}"`;
-
-      exec(command, async (error, stdout, stderr) => {
-        if (error) {
-          console.log(error);
-          return reply(`❌ *Error downloading:* ${error.message}`);
-        }
-
-        await gvbud.sendMessage(
-          from,
-          {
-            audio: { url: `file://${filePath}` },
-            mimetype: "audio/mpeg",
-          },
-          { quoted: mek }
-        );
-
-        await gvbud.sendMessage(
-          from,
-          {
-            document: { url: `file://${filePath}` },
-            mimetype: "audio/mpeg",
-            fileName: fileName,
-            caption: "🎶 *Your song is ready!*",
-          },
-          { quoted: mek }
-        );
-
-        reply("✅ Song downloaded successfully!");
+      // Download with yt-dlp-exec
+      await ytdlp(url, {
+        extractAudio: true,
+        audioFormat: "mp3",
+        audioQuality: "192K",
+        output: filePath,
+        cookies: cookiesPath,
       });
+
+      // Send audio
+      await gvbud.sendMessage(
+        from,
+        { audio: { url: `file://${filePath}` }, mimetype: "audio/mpeg" },
+        { quoted: mek }
+      );
+
+      // Send as document
+      await gvbud.sendMessage(
+        from,
+        { document: { url: `file://${filePath}` }, mimetype: "audio/mpeg", fileName: fileName, caption: "🎶 *Your song is ready!*" },
+        { quoted: mek }
+      );
+
+      reply("✅ Song downloaded successfully!");
     } catch (e) {
       console.log(e);
       reply(`❌ *Error:* ${e.message}`);
