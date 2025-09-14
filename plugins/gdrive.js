@@ -1,103 +1,68 @@
-const { cmd, commands } = require("../command");
-const yts = require("yt-search");
-const { ytmp3 } = require("@vreden/youtube_scraper");
+const { cmd } = require("../command");
+const axios = require("axios");
+const fs = require("fs");
+const path = require("path");
 
 cmd(
   {
-    pattern: "song",
-    react: "🎶",
-    desc: "Download Song",
+    pattern: "gdrive",
+    react: "📂",
+    desc: "Download file from Google Drive link",
     category: "download",
     filename: __filename,
   },
-  async (
-    danuwa,
-    mek,
-    m,
-    {
-      from,
-      quoted,
-      body,
-      isCmd,
-      command,
-      args,
-      q,
-      isGroup,
-      sender,
-      senderNumber,
-      botNumber2,
-      botNumber,
-      pushname,
-      isMe,
-      isOwner,
-      groupMetadata,
-      groupName,
-      participants,
-      groupAdmins,
-      isBotAdmins,
-      isAdmins,
-      reply,
-    }
-  ) => {
+  async (gvbud, mek, m, { from, reply, q }) => {
     try {
-      if (!q) return reply("❌ *Please provide a song name or YouTube link*");
+      if (!q) return reply("❌ *Please provide a Google Drive file link*");
 
-      const search = await yts(q);
-      const data = search.videos[0];
-      const url = data.url;
-
-      let desc = `
-Song downloader
-🎬 *Title:* ${data.title}
-⏱️ *Duration:* ${data.timestamp}
-📅 *Uploaded:* ${data.ago}
-👀 *Views:* ${data.views.toLocaleString()}
-🔗 *Watch Here:* ${data.url}
-`;
-
-      await danuwa.sendMessage(
-        from,
-        { image: { url: data.thumbnail }, caption: desc },
-        { quoted: mek }
-      );
-
-      const quality = "192";
-      const songData = await ytmp3(url, quality);
-
-      let durationParts = data.timestamp.split(":").map(Number);
-      let totalSeconds =
-        durationParts.length === 3
-          ? durationParts[0] * 3600 + durationParts[1] * 60 + durationParts[2]
-          : durationParts[0] * 60 + durationParts[1];
-
-      if (totalSeconds > 1800) {
-        return reply("⏳ *Sorry, audio files longer than 30 minutes are not supported.*");
+      // Extract file ID from the link
+      let fileId;
+      const match = q.match(/(?:file\/d\/|id=)([a-zA-Z0-9_-]+)/);
+      if (match && match[1]) {
+        fileId = match[1];
+      } else {
+        return reply("❌ *Invalid Google Drive link*");
       }
 
-      await danuwa.sendMessage(
+      const url = `https://drive.google.com/uc?export=download&id=${fileId}`;
+
+      // Temporary file path
+      const tempFilePath = path.join(__dirname, `${fileId}.tmp`);
+
+      const response = await axios({
+        method: "GET",
+        url: url,
+        responseType: "stream",
+      });
+
+      // Save file temporarily
+      const writer = fs.createWriteStream(tempFilePath);
+      response.data.pipe(writer);
+
+      await new Promise((resolve, reject) => {
+        writer.on("finish", resolve);
+        writer.on("error", reject);
+      });
+
+      // Send file via WhatsApp
+      await gvbud.sendMessage(
         from,
         {
-          audio: { url: songData.download.url },
-          mimetype: "audio/mpeg",
+          document: fs.createReadStream(tempFilePath),
+          mimetype: "application/octet-stream",
+          fileName: "GoogleDriveFile",
+          caption: "📁 *Here is your downloaded file!*",
         },
         { quoted: mek }
       );
 
-      await danuwa.sendMessage(
-        from,
-        {
-          document: { url: songData.download.url },
-          mimetype: "audio/mpeg",
-          fileName: `${data.title}.mp3`,
-          caption: "🎶 *Your song is ready to be played!*",
-        },
-        { quoted: mek }
-      );
+      // Delete temporary file
+      fs.unlinkSync(tempFilePath);
 
-      return reply("✅ Thank you");
+      return reply("✅ *Download complete!*");
     } catch (e) {
       console.log(e);
-      reply(`❌ *Error:* ${e.message} 😞`);
+      reply(`❌ *Error:* ${e.message}`);
     }
   }
 );
