@@ -11,7 +11,7 @@ cmd(
     filename: __filename,
   },
   async (
-    danuwa,
+    gvbud,
     mek,
     m,
     {
@@ -44,11 +44,11 @@ Your youtube search results
 ${formattedResults}
    `;
 
-      await danuwa.sendMessage(
+      await gvbud.sendMessage(
         from,
         {
           image: {
-            url: "https://github.com/DANUWA-MD/DANUWA-MD/blob/main/images/yts.png?raw=true",
+            url: "https://github.com/gvchganegoda/GV-Bud/blob/main/images/Main%20Photo.jpg?raw=true",
           },
           caption,
         },
