@@ -1,12 +1,12 @@
 {
-  "name": "DANUWA-MD",
+  "name": "GV-Bud",
   "version": "1.0.0",
   "description": "A Powerfull Whatsapp Bot",
   "main": "index.js",
   "scripts": {
-    "start": "pm2 start index.js --deep-monitoring --attach --name DANUWA-MD",
-    "stop": "pm2 stop DANUWA-MD",
-    "restart": "pm2 restart DANUWA-MD"
+    "start": "pm2 start index.js --deep-monitoring --attach --name GV-Bud",
+    "stop": "pm2 stop GV-Bud",
+    "restart": "pm2 restart GV-Bud"
   },
   "dependencies": {
     "@whiskeysockets/baileys": "^6.7.16",
