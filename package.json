@@ -1,7 +1,7 @@
 {
-  "name": "GV-Bud",
+  "name": "gv-bud",
   "version": "1.0.0",
-  "description": "A Powerfull Whatsapp Bot",
+  "description": "A powerful WhatsApp bot",
   "main": "index.js",
   "scripts": {
     "start": "pm2 start index.js --deep-monitoring --attach --name GV-Bud",
@@ -23,13 +23,10 @@
     "node-fetch": "^3.3.2",
     "node-id3": "^0.2.9",
     "node-webpmux": "^3.2.1",
-    "path": "^0.12.7",
     "pino": "^9.9.5",
     "pm2": "^6.0.10",
     "punycode": "^2.3.1",
     "qrcode-terminal": "^0.12.0",
-    "tmp": "^0.2.5",
-    "util": "^0.12.5",
-    "vm": "^0.1.0"
+    "tmp": "^0.2.5"
   }
 }
