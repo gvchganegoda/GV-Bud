@@ -1,6 +1,6 @@
-const ytdl = require('ytdl-core');
-const fs = require('fs');
-const path = require('path');
+const { exec } = require("yt-dlp-exec");
+const fs = require("fs");
+const path = require("path");
 
 module.exports = {
     name: "song",
@@ -9,27 +9,28 @@ module.exports = {
     run: async (bot, message, args) => {
         try {
             const url = args[0];
-            if (!ytdl.validateURL(url)) {
-                return message.reply("Please provide a valid YouTube URL.");
-            }
+            if (!url) return message.reply("Send a valid YouTube link.");
 
-            const info = await ytdl.getInfo(url);
-            const title = info.videoDetails.title.replace(/[^\w\s]/gi, '');
-            const output = path.join(__dirname, `${title}.mp3`);
+            // Temporary file name
+            const output = path.join(__dirname, `song.mp3`);
 
-            const stream = ytdl(url, { filter: 'audioonly', quality: 'highestaudio' });
-            const fileStream = fs.createWriteStream(output);
-
-            stream.pipe(fileStream);
-
-            fileStream.on('finish', () => {
-                message.reply({ text: `Downloaded: ${title}`, file: output });
+            // Download audio only
+            await exec(url, {
+                output: output,
+                extractAudio: true,
+                audioFormat: "mp3",
+                audioQuality: 0
             });
 
-            fileStream.on('error', (err) => {
-                console.error(err);
-                message.reply("Error saving the audio file.");
+            // Send the audio file
+            await bot.sendMessage(message.from, {
+                audio: fs.readFileSync(output),
+                mimetype: "audio/mpeg",
+                fileName: "song.mp3"
             });
+
+            // Delete temp file
+            fs.unlinkSync(output);
 
         } catch (err) {
             console.error(err);
