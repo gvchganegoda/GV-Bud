@@ -1,15 +1,15 @@
 const { cmd } = require("../command");
 const yts = require("yt-search");
-const ytdl = require("ytdl-core");
+const youtubedl = require("yt-dlp-exec");
 const fs = require("fs");
 const path = require("path");
 
 cmd(
   {
     pattern: "song",
-    alias: ["mp3"],
+    alias: ["mp3", "song"],
     react: "🎶",
-    desc: "Download YouTube Song",
+    desc: "Download Song from YouTube (no cookies needed)",
     category: "download",
     filename: __filename,
   },
@@ -18,75 +18,66 @@ cmd(
       if (!q) return reply("❌ *Please provide a song name or YouTube link*");
       reply("⏳ Fetching your song…");
 
+      // 1️⃣ Get YouTube URL
       let videoUrl;
-
-      // Check if input is a valid YouTube URL
-      if (ytdl.validateURL(q)) {
+      if (/^(https?:\/\/)?(www\.)?(youtube\.com|youtu\.be)/.test(q)) {
         videoUrl = q;
       } else {
         const search = await yts(q);
-        const video = search.videos[0];
-        if (!video) return reply("⚠️ No results found.");
-        videoUrl = video.url;
+        if (!search.videos.length) return reply("⚠️ No results found.");
+        videoUrl = search.videos[0].url;
       }
 
-      const info = await ytdl.getInfo(videoUrl);
-      const details = info.videoDetails;
-      const durationSeconds = parseInt(details.lengthSeconds, 10);
+      // 2️⃣ Get video info without cookies
+      const info = await youtubedl(videoUrl, {
+        dumpJson: true,
+        noCheckCertificate: true,
+        noWarnings: true,
+        preferFreeFormats: true,
+        youtubeSkipDashManifest: true,
+      });
 
-      // Limit for long videos (adjust if needed)
-      if (durationSeconds > 600) {
-        return reply("⏳ *Sorry, audio files longer than 10 minutes are not supported.*");
+      if (info.duration > 3600) {
+        return reply("⏳ *Sorry, audio longer than 1 hour is not supported.*");
       }
 
-      const safeTitle = details.title.replace(/[<>:"/\\|?*]+/g, "");
-      const duration = new Date(durationSeconds * 1000).toISOString().substr(11, 8);
+      const safeTitle = info.title.replace(/[<>:"/\\|?*]+/g, "");
+      const filePath = path.join(__dirname, `${safeTitle}.mp3`);
 
+      // 3️⃣ Download audio
+      await youtubedl(videoUrl, {
+        extractAudio: true,
+        audioFormat: "mp3",
+        output: filePath,
+        noCheckCertificate: true,
+        preferFreeFormats: true,
+        youtubeSkipDashManifest: true,
+      });
+
+      // 4️⃣ Send info
       const desc = `
-🎬 *Title:* ${details.title}
-⏱️ *Duration:* ${duration}
-📅 *Uploaded:* ${details.uploadDate}
-👀 *Views:* ${parseInt(details.viewCount).toLocaleString()}
-🔗 *Watch Here:* ${details.video_url}
-`;
-
-      // Send info card
+🎬 *Title:* ${info.title}
+⏱️ *Duration:* ${new Date(info.duration * 1000)
+        .toISOString()
+        .substr(11, 8)}
+👀 *Views:* ${parseInt(info.view_count).toLocaleString()}
+🔗 *Watch Here:* ${videoUrl}
+      `;
       await gvbud.sendMessage(
         from,
-        { image: { url: details.thumbnails.pop().url }, caption: desc },
+        { image: { url: info.thumbnail }, caption: desc },
         { quoted: mek }
       );
 
-      // Prepare temporary file path
-      const tmpFile = path.join(__dirname, `${safeTitle}.mp3`);
-
-      // Download audio using ytdl-core
-      const audioStream = ytdl(videoUrl, {
-        filter: "audioonly",
-        quality: "highestaudio",
-        highWaterMark: 1 << 25, // 32MB buffer to avoid throttling
-      });
-
-      const writeStream = fs.createWriteStream(tmpFile);
-      audioStream.pipe(writeStream);
-
-      // Wait for download to finish
-      await new Promise((resolve, reject) => {
-        audioStream.on("error", (err) => reject(err));
-        writeStream.on("finish", () => resolve());
-        writeStream.on("error", (err) => reject(err));
-      });
-
-      const audioBuffer = fs.readFileSync(tmpFile);
-
-      // Send audio
+      // 5️⃣ Send audio
+      const audioBuffer = fs.readFileSync(filePath);
       await gvbud.sendMessage(
         from,
         { audio: audioBuffer, mimetype: "audio/mpeg" },
         { quoted: mek }
       );
 
-      // Send as document for download
+      // 6️⃣ Send as document
       await gvbud.sendMessage(
         from,
         {
@@ -98,13 +89,14 @@ cmd(
         { quoted: mek }
       );
 
-      // Clean up temp file
-      fs.unlinkSync(tmpFile);
-
-      reply("✅ Thank you for using GV-Bud");
+      // 7️⃣ Clean up local file
+      fs.unlinkSync(filePath);
+      reply("✅ Download completed successfully!");
     } catch (e) {
       console.error("Download error:", e);
-      reply("❌ Unable to download this song. It may be blocked or removed.");
+      reply(
+        "❌ *Unable to download this song. It may be blocked or region restricted.*"
+      );
     }
   }
 );
