@@ -1,5 +1,6 @@
 const { cmd } = require("../command");
 const yts = require("yt-search");
+const { getDownloadDetails } = require("youtube-downloader-cc-api");
 const ytdlp = require("yt-dlp-exec");
 const fs = require("fs");
 const path = require("path");
