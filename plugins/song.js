@@ -9,21 +9,19 @@ cmd(
   {
     pattern: "yt",
     react: "🎬",
-    desc: "Download YouTube video (MP4) or audio (MP3)",
+    desc: "Download YouTube audio/video with quality options",
     category: "download",
     filename: __filename,
   },
   async (gvbud, mek, m, { from, reply, q }) => {
     try {
-      if (!q)
-        return reply("❌ Please provide a YouTube link or a search keyword!");
+      if (!q) return reply("❌ Please provide a YouTube link or search keyword!");
 
-      // --- 1️⃣  Find video ---
+      // 1️⃣ Find video
       let video;
       if (/^https?:\/\//.test(q)) {
-        // if it's already a YouTube link
-        const id = q.includes("v=") ? q.split("v=")[1].split("&")[0] : q;
-        const search = await yts({ videoId: id });
+        // If a YouTube link is given directly
+        const search = await yts({ videoId: q.split("v=")[1]?.split("&")[0] || q });
         video = search;
       } else {
         const search = await yts(q);
@@ -34,7 +32,7 @@ cmd(
       const url = video.url;
       const safeTitle = video.title.replace(/[\/\\?%*:|"<>]/g, "_");
 
-      // --- 2️⃣  Ask user which format ---
+      // 2️⃣ Show video info and ask user for format/quality
       const infoMsg = `
 🎬 *Title:* ${video.title}
 ⏱️ *Duration:* ${video.timestamp}
@@ -44,7 +42,9 @@ cmd(
 
 ➡️ Reply with a number:
    *1* – MP3 (Audio only)
-   *2* – MP4 (Full Video)
+   *2* – 360p Video
+   *3* – 720p Video
+   *4* – 1080p Video
 `;
 
       await gvbud.sendMessage(
@@ -53,7 +53,7 @@ cmd(
         { quoted: mek }
       );
 
-      // wait for reply (replace with your bot framework's collector if different)
+      // Wait for user response (replace with your framework’s listener if different)
       const userResponse = await gvbud.waitForMessage({
         from,
         sender: mek.sender,
@@ -66,26 +66,37 @@ cmd(
       let format, outputExt, mimetype, ytdlpOptions;
 
       if (choice === "1") {
-        // Audio (MP3)
+        // MP3
         format = "bestaudio";
         outputExt = "mp3";
         mimetype = "audio/mpeg";
-        ytdlpOptions = {
-          extractAudio: true,
-          audioFormat: "mp3",
-          audioQuality: "192K",
-        };
+        ytdlpOptions = { extractAudio: true, audioFormat: "mp3", audioQuality: "192K" };
+
+        // ✅ Example use of youtube-downloader-cc-api:
+        // (Optional) get direct MP3 link
+        const details = await getDownloadDetails(url, "mp3", "stream");
+        console.log("Direct MP3 link from API:", details);
+
       } else if (choice === "2") {
-        // Video (MP4)
-        format = "bestvideo[ext=mp4]+bestaudio[ext=m4a]/mp4";
+        format = "bestvideo[height<=360][ext=mp4]+bestaudio[ext=m4a]/mp4";
+        outputExt = "mp4";
+        mimetype = "video/mp4";
+        ytdlpOptions = {};
+      } else if (choice === "3") {
+        format = "bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/mp4";
+        outputExt = "mp4";
+        mimetype = "video/mp4";
+        ytdlpOptions = {};
+      } else if (choice === "4") {
+        format = "bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/mp4";
         outputExt = "mp4";
         mimetype = "video/mp4";
         ytdlpOptions = {};
       } else {
-        return reply("❌ Invalid choice. Please reply with 1 or 2.");
+        return reply("❌ Invalid choice. Please reply with 1, 2, 3, or 4.");
       }
 
-      // --- 3️⃣  Download ---
+      // 3️⃣ Download
       const fileName = `${safeTitle}.${outputExt}`;
       const filePath = path.join(__dirname, fileName);
 
@@ -97,17 +108,16 @@ cmd(
         ...ytdlpOptions,
       });
 
-      // --- 4️⃣  Send file back ---
+      // 4️⃣ Send the downloaded file
       await gvbud.sendMessage(
         from,
-        { [choice === "1" ? "audio" : "video"]: { url: `file://${filePath}` }, mimetype },
+        { [outputExt === "mp3" ? "audio" : "video"]: { url: `file://${filePath}` }, mimetype },
         { quoted: mek }
       );
 
-      // --- 5️⃣  Clean up temp file ---
+      // 5️⃣ Remove temp file
       fs.unlink(filePath, () => {});
       reply("✅ Download completed!");
-
     } catch (error) {
       console.error(error);
       reply(`❌ Error: ${error.message}`);
