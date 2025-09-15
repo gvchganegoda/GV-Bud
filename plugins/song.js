@@ -6,78 +6,102 @@ const path = require("path");
 
 cmd(
   {
-    pattern: "song",
-    react: "🎶",
-    desc: "Download YouTube Song",
+    pattern: "yt",
+    react: "🎬",
+    desc: "Download YouTube Audio or Video",
     category: "download",
     filename: __filename,
   },
   async (gvbud, mek, m, { from, reply, q }) => {
     try {
-      if (!q) return reply("❌ Please provide a song name or YouTube link!");
+      if (!q) return reply("❌ Please provide a YouTube link or search keyword!");
 
-      // Search YouTube
-      const search = await yts(q);
-      const video = search.videos[0];
+      // Search or use provided link
+      let video;
+      if (/^https?:\/\//.test(q)) {
+        const search = await yts({ videoId: q.split("v=")[1] });
+        video = search; // if direct link
+      } else {
+        const search = await yts(q);
+        video = search.videos[0];
+      }
       if (!video) return reply("❌ No video found!");
 
       const url = video.url;
-      const fileName = video.title.replace(/[\/\\?%*:|"<>]/g, "_") + ".mp3";
-      const filePath = path.join(__dirname, fileName);
-
-      // Send video info
-      const desc = `
+      const safeTitle = video.title.replace(/[\/\\?%*:|"<>]/g, "_");
+      const infoMsg = `
 🎬 *Title:* ${video.title}
 ⏱️ *Duration:* ${video.timestamp}
 📅 *Uploaded:* ${video.ago}
 👀 *Views:* ${video.views.toLocaleString()}
 🔗 *Watch:* ${video.url}
+
+➡️ Reply with:
+   *audio*  – to get MP3
+   *360p*   – to get Video 360p
+   *720p*   – to get Video 720p
+   *1080p*  – to get Video 1080p
 `;
+
+      // Send thumbnail and prompt user
       await gvbud.sendMessage(
         from,
-        { image: { url: video.thumbnail }, caption: desc },
+        { image: { url: video.thumbnail }, caption: infoMsg },
         { quoted: mek }
       );
 
-      // Limit: 30 minutes
-      const durationParts = video.timestamp.split(":").map(Number);
-      const totalSeconds =
-        durationParts.length === 3
-          ? durationParts[0] * 3600 + durationParts[1] * 60 + durationParts[2]
-          : durationParts[0] * 60 + durationParts[1];
-      if (totalSeconds > 1800) return reply("⏳ Sorry, audio longer than 30 minutes is not supported.");
+      // Wait for the next user message (simple collector)
+      const userResponse = await gvbud.waitForMessage({
+        from,
+        sender: mek.sender,
+        timeout: 60 * 1000, // 1 min
+      }).catch(() => null);
 
-      // Download audio
+      if (!userResponse)
+        return reply("⏳ Timeout. Please run the command again.");
+
+      const choice = userResponse.message?.conversation?.toLowerCase().trim();
+
+      let format = "";
+      let outputExt = "";
+      let mimetype = "";
+
+      if (choice === "audio") {
+        format = "bestaudio";
+        outputExt = "mp3";
+        mimetype = "audio/mpeg";
+      } else if (["360p", "720p", "1080p"].includes(choice)) {
+        const map = { "360p": "360", "720p": "720", "1080p": "1080" };
+        format = `bestvideo[height<=${map[choice]}]+bestaudio/best[height<=${map[choice]}]`;
+        outputExt = "mp4";
+        mimetype = "video/mp4";
+      } else {
+        return reply("❌ Invalid choice. Please type: audio / 360p / 720p / 1080p");
+      }
+
+      const fileName = `${safeTitle}.${outputExt}`;
+      const filePath = path.join(__dirname, fileName);
+
+      reply(`📥 Downloading your selection: *${choice}* ...`);
+
       await ytdlp(url, {
-        extractAudio: true,
-        audioFormat: "mp3",
-        audioQuality: "192K",
+        format,
         output: filePath,
+        extractAudio: choice === "audio",
+        audioFormat: choice === "audio" ? "mp3" : undefined,
+        audioQuality: choice === "audio" ? "192K" : undefined,
       });
 
-      // Send as audio
+      // Send file
       await gvbud.sendMessage(
         from,
-        { audio: { url: `file://${filePath}` }, mimetype: "audio/mpeg" },
+        { [choice === "audio" ? "audio" : "video"]: { url: `file://${filePath}` }, mimetype },
         { quoted: mek }
       );
 
-      // Send as document
-      await gvbud.sendMessage(
-        from,
-        {
-          document: { url: `file://${filePath}` },
-          mimetype: "audio/mpeg",
-          fileName: fileName,
-          caption: "🎶 Your song is ready!",
-        },
-        { quoted: mek }
-      );
-
-      // Remove temp file
       fs.unlink(filePath, () => {});
+      reply("✅ Download completed!");
 
-      reply("✅ Song downloaded successfully!");
     } catch (error) {
       console.error(error);
       reply(`❌ Error: ${error.message}`);
