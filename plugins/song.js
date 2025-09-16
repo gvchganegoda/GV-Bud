@@ -1,7 +1,6 @@
-
-const { cmd, commands } = require("../command");
-const yts = require("yt-search");
-const { ytmp3 } = require("@vreden/youtube_scraper");
+const ytdl = require("ytdl-core");
+const fs = require("fs");
+const path = require("path");
 
 cmd(
   {
@@ -11,94 +10,48 @@ cmd(
     category: "download",
     filename: __filename,
   },
-  async (
-    gvbud,
-    mek,
-    m,
-    {
-      from,
-      quoted,
-      body,
-      isCmd,
-      command,
-      args,
-      q,
-      isGroup,
-      sender,
-      senderNumber,
-      botNumber2,
-      botNumber,
-      pushname,
-      isMe,
-      isOwner,
-      groupMetadata,
-      groupName,
-      participants,
-      groupAdmins,
-      isBotAdmins,
-      isAdmins,
-      reply,
-    }
-  ) => {
+  async (gvbud, mek, m, { from, reply, q }) => {
     try {
       if (!q) return reply("❌ *Please provide a song name or YouTube link*");
 
-      const search = await yts(q);
-      const data = search.videos[0];
-      const url = data.url;
+      const isUrl = q.startsWith("http");
+      let url = q;
 
-      let desc = `
-Song downloader
-🎬 *Title:* ${data.title}
-⏱️ *Duration:* ${data.timestamp}
-📅 *Uploaded:* ${data.ago}
-👀 *Views:* ${data.views.toLocaleString()}
-🔗 *Watch Here:* ${data.url}
-`;
-
-      await gvbud.sendMessage(
-        from,
-        { image: { url: data.thumbnail }, caption: desc },
-        { quoted: mek }
-      );
-
-      const quality = "192";
-      const songData = await ytmp3(url, quality);
-
-      let durationParts = data.timestamp.split(":").map(Number);
-      let totalSeconds =
-        durationParts.length === 3
-          ? durationParts[0] * 3600 + durationParts[1] * 60 + durationParts[2]
-          : durationParts[0] * 60 + durationParts[1];
-
-      if (totalSeconds > 1800) {
-        return reply("⏳ *Sorry, audio files longer than 30 minutes are not supported.*");
+      if (!isUrl) {
+        // Search YouTube if input is a keyword
+        const search = await yts(q);
+        if (!search.videos.length) return reply("❌ *No results found*");
+        url = search.videos[0].url;
       }
 
-      await gvbud.sendMessage(
-        from,
-        {
-          audio: { url: songData.download.url },
-          mimetype: "audio/mpeg",
-        },
-        { quoted: mek }
-      );
+      const info = await ytdl.getInfo(url);
+      const title = info.videoDetails.title;
+      const duration = info.videoDetails.lengthSeconds;
 
-      await gvbud.sendMessage(
-        from,
-        {
-          document: { url: songData.download.url },
-          mimetype: "audio/mpeg",
-          fileName: `${data.title}.mp3`,
-          caption: "🎶 *Your song is ready to be played!*",
-        },
-        { quoted: mek }
-      );
+      if (duration > 1800) return reply("⏳ *Sorry, audio longer than 30 min not supported*");
 
-      return reply("✅ Thank you");
+      const filePath = path.join(__dirname, `${title}.mp3`);
+      const stream = ytdl(url, { filter: "audioonly", quality: "highestaudio" });
+      const writeStream = fs.createWriteStream(filePath);
+      stream.pipe(writeStream);
+
+      writeStream.on("finish", async () => {
+        await gvbud.sendMessage(
+          from,
+          {
+            audio: fs.readFileSync(filePath),
+            mimetype: "audio/mpeg",
+            fileName: `${title}.mp3`,
+          },
+          { quoted: mek }
+        );
+        fs.unlinkSync(filePath);
+      });
+
+      reply(`✅ Downloading *${title}*...`);
     } catch (e) {
       console.log(e);
-      reply(`❌ *Error:* ${e.message} 😞`);
+      reply(`❌ *Error:* ${e.message}`);
     }
   }
 );
