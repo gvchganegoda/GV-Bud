@@ -1,3 +1,4 @@
+
 const { cmd, commands } = require("../command");
 const yts = require("yt-search");
 const { ytmp3 } = require("@vreden/youtube_scraper");
@@ -11,7 +12,7 @@ cmd(
     filename: __filename,
   },
   async (
-    danuwa,
+    gvbud,
     mek,
     m,
     {
@@ -55,7 +56,7 @@ Song downloader
 🔗 *Watch Here:* ${data.url}
 `;
 
-      await danuwa.sendMessage(
+      await gvbud.sendMessage(
         from,
         { image: { url: data.thumbnail }, caption: desc },
         { quoted: mek }
@@ -74,7 +75,7 @@ Song downloader
         return reply("⏳ *Sorry, audio files longer than 30 minutes are not supported.*");
       }
 
-      await danuwa.sendMessage(
+      await gvbud.sendMessage(
         from,
         {
           audio: { url: songData.download.url },
@@ -83,7 +84,7 @@ Song downloader
         { quoted: mek }
       );
 
-      await danuwa.sendMessage(
+      await gvbud.sendMessage(
         from,
         {
           document: { url: songData.download.url },
