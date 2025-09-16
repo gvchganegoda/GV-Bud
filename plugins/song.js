@@ -64,4 +64,63 @@ cmd(
 
       if (!userResponse) return reply("⏳ Timeout. Please run the command again.");
 
-      const choice = userResponse.message?.c
+      const choice = userResponse.message?.conversation?.trim();
+      let format, outputExt, mimetype, ytdlpOptions;
+
+      if (choice === "1") {
+        format = "bestaudio";
+        outputExt = "mp3";
+        mimetype = "audio/mpeg";
+        ytdlpOptions = { extractAudio: true, audioFormat: "mp3", audioQuality: "192K" };
+
+        // Optional: get direct MP3 link
+        const details = await getDownloadDetails(url, "mp3", "stream");
+        console.log("Direct MP3 link from API:", details);
+
+      } else if (choice === "2") {
+        format = "bestvideo[height<=360][ext=mp4]+bestaudio[ext=m4a]/mp4";
+        outputExt = "mp4";
+        mimetype = "video/mp4";
+        ytdlpOptions = {};
+      } else if (choice === "3") {
+        format = "bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/mp4";
+        outputExt = "mp4";
+        mimetype = "video/mp4";
+        ytdlpOptions = {};
+      } else if (choice === "4") {
+        format = "bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/mp4";
+        outputExt = "mp4";
+        mimetype = "video/mp4";
+        ytdlpOptions = {};
+      } else {
+        return reply("❌ Invalid choice. Please reply with 1, 2, 3, or 4.");
+      }
+
+      // ---------- 4️⃣ Download ----------
+      const fileName = `${safeTitle}.${outputExt}`;
+      const filePath = path.join(__dirname, fileName);
+
+      reply(`📥 Downloading as *${outputExt.toUpperCase()}* ...`);
+
+      await ytdlp(url, {
+        format,
+        output: filePath,
+        ...ytdlpOptions,
+      });
+
+      // ---------- 5️⃣ Send the downloaded file ----------
+      await gvbud.sendMessage(
+        from,
+        { [outputExt === "mp3" ? "audio" : "video"]: { url: `file://${filePath}` }, mimetype },
+        { quoted: mek }
+      );
+
+      // ---------- 6️⃣ Clean up ----------
+      fs.unlink(filePath, () => {});
+      reply("✅ Download completed!");
+    } catch (error) {
+      console.error(error);
+      reply(`❌ Error: ${error.message}`);
+    }
+  }
+);
