@@ -3,11 +3,14 @@ const ytdlp = require("yt-dlp-exec");
 const fs = require("fs");
 const path = require("path");
 
+// Optional: load environment variables from a .env file
+require("dotenv").config(); // npm install dotenv
+
 cmd(
   {
     pattern: "yt",
     react: "🎬",
-    desc: "Download YouTube audio/video. Usage: .yt <URL> | <format>",
+    desc: "Download YouTube audio/video with login support. Usage: .yt <URL> | <format>",
     category: "download",
     filename: __filename,
   },
@@ -19,7 +22,6 @@ cmd(
         );
       }
 
-      // Split input
       const [url, formatChoice] = q.split("|").map(i => i.trim());
 
       if (!/^https?:\/\//.test(url)) {
@@ -59,9 +61,16 @@ cmd(
 
       reply(`📥 Downloading video as ${outputExt.toUpperCase()}...`);
 
+      // Optional login using env variables
+      // Set YT_USERNAME and YT_PASSWORD in .env file
+      const username = process.env.YT_USERNAME;
+      const password = process.env.YT_PASSWORD;
+
       await ytdlp(url, {
         format,
         output: filePath,
+        username,       // safely passed from environment
+        password,       // safely passed from environment
         ...ytdlpOptions,
       });
 
