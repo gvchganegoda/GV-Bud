@@ -1,5 +1,4 @@
 const { cmd } = require("../command");
-const yts = require("yt-search");
 const ytdlp = require("yt-dlp-exec");
 const fs = require("fs");
 const path = require("path");
@@ -8,7 +7,7 @@ cmd(
   {
     pattern: "yt",
     react: "🎬",
-    desc: "Download YouTube audio/video. Usage: .yt <link or search> | <format>",
+    desc: "Download YouTube audio/video. Usage: .yt <URL> | <format>",
     category: "download",
     filename: __filename,
   },
@@ -16,30 +15,18 @@ cmd(
     try {
       if (!q || !q.includes("|")) {
         return reply(
-          "❌ Please provide input in the format:\n.yt <YouTube link or search> | <format>\n\nFormats:\n1 - MP3 Audio\n2 - 360p Video\n3 - 720p Video\n4 - 1080p Video"
+          "❌ Please provide input in the format:\n.yt <YouTube URL> | <format>\n\nFormats:\n1 - MP3 Audio\n2 - 360p Video\n3 - 720p Video\n4 - 1080p Video"
         );
       }
 
       // Split input
-      const [input, formatChoice] = q.split("|").map(i => i.trim());
+      const [url, formatChoice] = q.split("|").map(i => i.trim());
 
-      // ---------- 1️⃣ Find video ----------
-      let video;
-      if (/^https?:\/\//.test(input)) {
-        const id = input.split("v=")[1]?.split("&")[0] || input;
-        const { video: vid } = await yts({ videoId: id });
-        video = vid;
-      } else {
-        const search = await yts(input);
-        video = search.videos[0];
+      if (!/^https?:\/\//.test(url)) {
+        return reply("❌ Invalid URL! Please provide a valid YouTube link.");
       }
 
-      if (!video) return reply("❌ No video found!");
-
-      const url = video.url;
-      const safeTitle = video.title.replace(/[\/\\?%*:|"<>]/g, "_");
-
-      // ---------- 2️⃣ Determine format ----------
+      // ---------- 1️⃣ Determine format ----------
       let format, outputExt, mimetype, ytdlpOptions;
 
       if (formatChoice === "1") {
@@ -66,11 +53,11 @@ cmd(
         return reply("❌ Invalid format. Use 1, 2, 3, or 4.");
       }
 
-      // ---------- 3️⃣ Download ----------
-      const fileName = `${safeTitle}.${outputExt}`;
+      // ---------- 2️⃣ Download ----------
+      const fileName = `YouTubeDownload.${outputExt}`;
       const filePath = path.join(__dirname, fileName);
 
-      reply(`📥 Downloading *${video.title}* as ${outputExt.toUpperCase()}...`);
+      reply(`📥 Downloading video as ${outputExt.toUpperCase()}...`);
 
       await ytdlp(url, {
         format,
@@ -78,14 +65,14 @@ cmd(
         ...ytdlpOptions,
       });
 
-      // ---------- 4️⃣ Send file ----------
+      // ---------- 3️⃣ Send file ----------
       await gvbud.sendMessage(
         from,
         { [outputExt === "mp3" ? "audio" : "video"]: { url: `file://${filePath}` }, mimetype },
         { quoted: mek }
       );
 
-      // ---------- 5️⃣ Clean up ----------
+      // ---------- 4️⃣ Clean up ----------
       fs.unlink(filePath, () => {});
       reply("✅ Download completed!");
     } catch (error) {
