@@ -1,64 +1,47 @@
+const { cmd } = require("../command");  // import your command handler
+const { fetchMovieDetails, fetchTVShowDetails, fetchEpisodeDetails } = require("../lib/cinesubz"); // adjust path
 const axios = require("axios");
-const cheerio = require("cheerio");
 
-/**
- * Fetch movie details by ID
- */
-async function fetchMovieDetails(id) {
-  const url = `https://cinesubz.lk/movie/${id}`;
-  const res = await axios.get(url);
-  const $ = cheerio.load(res.data);
+cmd(
+  {
+    pattern: "cinesubz",
+    react: "🎬",
+    desc: "Fetch movie/TV/episode details from cinesubz.lk",
+    category: "download",
+    filename: __filename,
+  },
+  async (gvbud, mek, m, { from, reply, q }) => {
+    try {
+      if (!q) return reply("❌ Please provide the type and ID, e.g. `movie-123` or `tv-456` or `ep-789`");
 
-  const title = $("h1.entry-title").text().trim();
-  const release = $(".meta-date").text().trim();
-  const duration = $(".meta-duration").text().trim();
+      const [type, id] = q.split("-");
+      if (!type || !id) return reply("❌ Invalid format. Use `movie-123`, `tv-456`, or `ep-789`");
 
-  const downloadLinks = [];
-  $(".download-links a").each((i, el) => {
-    const link = $(el).attr("href");
-    if (link) downloadLinks.push(link);
-  });
+      let details;
 
-  return { title, release, duration, downloadLinks };
-}
+      switch (type.toLowerCase()) {
+        case "movie":
+          details = await fetchMovieDetails(id);
+          reply(`🎬 *${details.title}*\n🗓 Release: ${details.release}\n⏱ Duration: ${details.duration}\n\n📥 Download Links:\n${details.downloadLinks.join("\n")}`);
+          break;
 
-/**
- * Fetch TV show details by ID
- */
-async function fetchTVShowDetails(id) {
-  const url = `https://cinesubz.lk/tvshow/${id}`;
-  const res = await axios.get(url);
-  const $ = cheerio.load(res.data);
+        case "tv":
+          details = await fetchTVShowDetails(id);
+          reply(`📺 *${details.name}*\n🗓 Release: ${details.release}\n\n📥 Download Links:\n${details.downloadLinks.join("\n")}`);
+          break;
 
-  const name = $("h1.entry-title").text().trim();
-  const release = $(".meta-date").text().trim();
+        case "ep":
+          details = await fetchEpisodeDetails(id);
+          reply(`📺 Episode: *${details.title}*\n\n📥 Download Links:\n${details.downloadLinks.join("\n")}`);
+          break;
 
-  const downloadLinks = [];
-  $(".download-links a").each((i, el) => {
-    const link = $(el).attr("href");
-    if (link) downloadLinks.push(link);
-  });
-
-  return { name, release, downloadLinks };
-}
-
-/**
- * Fetch episode details by ID
- */
-async function fetchEpisodeDetails(id) {
-  const url = `https://cinesubz.lk/episode/${id}`;
-  const res = await axios.get(url);
-  const $ = cheerio.load(res.data);
-
-  const title = $("h1.entry-title").text().trim();
-
-  const downloadLinks = [];
-  $(".download-links a").each((i, el) => {
-    const link = $(el).attr("href");
-    if (link) downloadLinks.push(link);
-  });
-
-  return { title, downloadLinks };
-}
-
-module.exports = { fetchMovieDetails, fetchTVShowDetails, fetchEpisodeDetails };
+        default:
+          reply("❌ Invalid type. Use `movie`, `tv`, or `ep`.");
+          break;
+      }
+    } catch (err) {
+      console.error("Cinesubz plugin error:", err);
+      reply(`❌ Error fetching details: ${err.message}`);
+    }
+  }
+);
