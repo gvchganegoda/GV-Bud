@@ -1,3 +1,7 @@
+// ---- Added missing imports ----
+const { cmd } = require("../command");      // needed to register the command
+const yts = require("yt-search");           // needed for keyword search
+
 const ytdl = require("ytdl-core");
 const fs = require("fs");
 const path = require("path");
@@ -18,17 +22,19 @@ cmd(
       let url = q;
 
       if (!isUrl) {
-        // Search YouTube if input is a keyword
+        // 🔍 Search YouTube if the user typed keywords
         const search = await yts(q);
         if (!search.videos.length) return reply("❌ *No results found*");
         url = search.videos[0].url;
       }
 
       const info = await ytdl.getInfo(url);
-      const title = info.videoDetails.title;
-      const duration = info.videoDetails.lengthSeconds;
+      const title = info.videoDetails.title.replace(/[\\/:*?"<>|]/g, ""); // sanitize filename
+      const duration = parseInt(info.videoDetails.lengthSeconds, 10);
 
-      if (duration > 1800) return reply("⏳ *Sorry, audio longer than 30 min not supported*");
+      if (duration > 1800) {
+        return reply("⏳ *Sorry, audio longer than 30 min is not supported*");
+      }
 
       const filePath = path.join(__dirname, `${title}.mp3`);
       const stream = ytdl(url, { filter: "audioonly", quality: "highestaudio" });
@@ -50,7 +56,7 @@ cmd(
 
       reply(`✅ Downloading *${title}*...`);
     } catch (e) {
-      console.log(e);
+      console.error(e);
       reply(`❌ *Error:* ${e.message}`);
     }
   }
