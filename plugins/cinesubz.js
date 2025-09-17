@@ -4,13 +4,14 @@ const cheerio = require("cheerio");
 const fs = require("fs");
 const path = require("path");
 
-// In-memory cache for search results per user
+// In-memory cache for each user's search session
 const searchCache = {};
 
+// Search CineSubz by movie name
 async function searchMovies(query) {
   const url = `https://cinesubz.lk/?s=${encodeURIComponent(query)}`;
   const res = await axios.get(url).catch(() => null);
-  if (!res) throw new Error("Search failed or no results");
+  if (!res) throw new Error("Search failed");
 
   const $ = cheerio.load(res.data);
   const results = [];
@@ -24,6 +25,7 @@ async function searchMovies(query) {
   return results;
 }
 
+// Fetch movie details and download links from a CineSubz page
 async function fetchMovieDetailsFromUrl(url) {
   const res = await axios.get(url).catch(() => null);
   if (!res) throw new Error("Movie not found");
@@ -43,6 +45,7 @@ async function fetchMovieDetailsFromUrl(url) {
   return { title, release, duration, downloadLinks };
 }
 
+// Download and send as WhatsApp document
 async function sendDocument(gvbud, from, link, title) {
   try {
     const tempPath = path.join(__dirname, "tempfile.tmp");
@@ -70,7 +73,7 @@ async function sendDocument(gvbud, from, link, title) {
   } catch (err) {
     console.error("Document send error:", err);
     gvbud.sendMessage(from, {
-      text: `❌ Failed to send document. Here is the download link:\n${link}`,
+      text: `❌ Failed to send document. Here is the direct link:\n${link}`,
     });
   }
 }
@@ -94,12 +97,12 @@ cmd(
       // Cache search results per user
       searchCache[from] = results;
 
-      // Send numbered results
+      // Prepare numbered search results with first available quality
       let msg = "🔎 Search results:\n";
       results.forEach((r, i) => {
         msg += `${i + 1}. ${r.title}\n`;
       });
-      msg += "\nReply with the number to download the movie.";
+      msg += "\nReply with the number to see available qualities.";
 
       await reply(msg);
     } catch (err) {
@@ -109,10 +112,9 @@ cmd(
   }
 );
 
-// Reply handler: user selects number to download
+// Reply handler: user selects a movie number
 replyHandlers.push({
   filter: (text, { sender }) => {
-    // Only proceed if user has a cached search
     return searchCache[sender] && /^\d+$/.test(text.trim());
   },
   function: async (gvbud, mek, m, { reply, sender, body }) => {
@@ -120,30 +122,51 @@ replyHandlers.push({
       const index = parseInt(body.trim(), 10) - 1;
       const results = searchCache[sender];
 
-      if (index < 0 || index >= results.length) {
-        return reply("❌ Invalid selection number.");
-      }
+      if (index < 0 || index >= results.length) return reply("❌ Invalid number.");
 
       const movie = results[index];
       const details = await fetchMovieDetailsFromUrl(movie.link);
 
-      // Show details + qualities
-      let msg = `🎬 *${details.title}*\n🗓 Release: ${details.release}\n⏱ Duration: ${details.duration}\n\n📥 Download Links:\n`;
-      details.downloadLinks.forEach((d, i) => {
-        msg += `${i + 1}. ${d.quality}: ${d.link}\n`;
-      });
-      await reply(msg);
+      // Cache the movie download links for quality selection
+      searchCache[sender] = { movie: details };
 
-      // Send first available quality as document
-      if (details.downloadLinks.length) {
-        await sendDocument(gvbud, sender, details.downloadLinks[0].link, details.title);
-      }
+      // Send list of qualities
+      let msg = `🎬 *${details.title}*\n🗓 Release: ${details.release}\n⏱ Duration: ${details.duration}\n\n📥 Available qualities:\n`;
+      details.downloadLinks.forEach((d, i) => {
+        msg += `${i + 1}. ${d.quality}\n`;
+      });
+      msg += "\nReply with the number of quality to download as document.";
+
+      await reply(msg);
+    } catch (err) {
+      console.error("Movie selection error:", err);
+      reply(`❌ Error fetching movie: ${err.message}`);
+    }
+  },
+});
+
+// Reply handler: user selects quality to download
+replyHandlers.push({
+  filter: (text, { sender }) => {
+    return searchCache[sender]?.movie && /^\d+$/.test(text.trim());
+  },
+  function: async (gvbud, mek, m, { reply, sender, body }) => {
+    try {
+      const details = searchCache[sender].movie;
+      const index = parseInt(body.trim(), 10) - 1;
+
+      if (index < 0 || index >= details.downloadLinks.length)
+        return reply("❌ Invalid quality number.");
+
+      const selectedLink = details.downloadLinks[index].link;
+      await reply(`⚡ Downloading *${details.title}* (${details.downloadLinks[index].quality})...`);
+      await sendDocument(gvbud, sender, selectedLink, details.title);
 
       // Clear cache for user
       delete searchCache[sender];
     } catch (err) {
       console.error("Download error:", err);
-      reply(`❌ Error fetching movie: ${err.message}`);
+      reply(`❌ Error downloading movie: ${err.message}`);
     }
   },
 });
