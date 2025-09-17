@@ -1,6 +1,8 @@
-const { cmd } = require("../command"); // command handler
+const { cmd } = require("../command");
 const axios = require("axios");
 const cheerio = require("cheerio");
+const fs = require("fs");
+const path = require("path");
 
 async function fetchMovieDetails(id) {
   const url = `https://cinesubz.lk/movies/${id}`;
@@ -14,108 +16,87 @@ async function fetchMovieDetails(id) {
   const duration = $(".movie-info .duration").text().trim() || "Unknown";
 
   const downloadLinks = [];
-  $(".download-links a").each((i, el) => {
-    downloadLinks.push($(el).attr("href"));
+
+  $(".download-links li").each((i, el) => {
+    const quality = $(el).find("strong").text().trim() || "Unknown Quality";
+    const link = $(el).find("a").attr("href");
+    if (link) downloadLinks.push({ quality, link });
   });
 
   return { title, release, duration, downloadLinks };
 }
 
-async function fetchTVShowDetails(id) {
-  const url = `https://cinesubz.lk/tv-shows/${id}`;
-  const res = await axios.get(url).catch(() => null);
-  if (!res) throw new Error("TV show not found");
+async function sendDocument(gvbud, from, link, title) {
+  try {
+    // Download file to temporary path
+    const tempPath = path.join(__dirname, "tempfile.tmp");
+    const writer = fs.createWriteStream(tempPath);
 
-  const $ = cheerio.load(res.data);
+    const response = await axios({
+      url: link,
+      method: "GET",
+      responseType: "stream",
+    });
 
-  const name = $("h1").first().text().trim();
-  const release = $(".tv-info .release-date").text().trim() || "Unknown";
+    response.data.pipe(writer);
 
-  const downloadLinks = [];
-  $(".download-links a").each((i, el) => {
-    downloadLinks.push($(el).attr("href"));
-  });
+    await new Promise((resolve, reject) => {
+      writer.on("finish", resolve);
+      writer.on("error", reject);
+    });
 
-  return { name, release, downloadLinks };
-}
+    // Send as document
+    await gvbud.sendMessage(from, {
+      document: fs.readFileSync(tempPath),
+      fileName: `${title}.mp4`, // change extension if needed
+      mimetype: "video/mp4",
+    });
 
-async function fetchEpisodeDetails(id) {
-  const url = `https://cinesubz.lk/episodes/${id}`;
-  const res = await axios.get(url).catch(() => null);
-  if (!res) throw new Error("Episode not found");
-
-  const $ = cheerio.load(res.data);
-
-  const title = $("h1").first().text().trim();
-  const downloadLinks = [];
-  $(".download-links a").each((i, el) => {
-    downloadLinks.push($(el).attr("href"));
-  });
-
-  return { title, downloadLinks };
+    // Delete temp file
+    fs.unlinkSync(tempPath);
+  } catch (err) {
+    console.error("Document send error:", err);
+    gvbud.sendMessage(from, {
+      text: `❌ Failed to send document. Here is the download link:\n${link}`,
+    });
+  }
 }
 
 cmd(
   {
     pattern: "cinesubz",
     react: "🎬",
-    desc: "Fetch movie/TV/episode details from cinesubz.lk",
+    desc: "Fetch movie details and download links from cinesubz.lk",
     category: "download",
     filename: __filename,
   },
   async (gvbud, mek, m, { from, reply, q }) => {
     try {
-      if (!q)
-        return reply(
-          "❌ Please provide the type and ID, e.g. `movie-avatar-2025`, `tv-stranger-things`, or `ep-s1e1`"
-        );
+      if (!q) return reply("❌ Provide movie ID, e.g., `flask-2025`");
 
-      const [type, ...idParts] = q.split("-");
-      const id = idParts.join("-");
-      if (!type || !id)
-        return reply(
-          "❌ Invalid format. Use `movie-avatar-2025`, `tv-stranger-things`, or `ep-s1e1`"
-        );
+      const id = q.toLowerCase();
+      const details = await fetchMovieDetails(id);
 
-      let details;
+      if (!details.downloadLinks.length) return reply("❌ No download links found.");
 
-      switch (type.toLowerCase()) {
-        case "movie":
-          details = await fetchMovieDetails(id);
-          reply(
-            `🎬 *${details.title}*\n🗓 Release: ${details.release}\n⏱ Duration: ${details.duration}\n\n📥 Download Links:\n${details.downloadLinks.join(
-              "\n"
-            )}`
-          );
-          break;
+      // Send movie info
+      let msg = `🎬 *${details.title}*\n🗓 Release: ${details.release}\n⏱ Duration: ${details.duration}\n\n📥 Download Links:\n`;
+      details.downloadLinks.forEach((d) => {
+        msg += `• ${d.quality}: ${d.link}\n`;
+      });
 
-        case "tv":
-          details = await fetchTVShowDetails(id);
-          reply(
-            `📺 *${details.name}*\n🗓 Release: ${details.release}\n\n📥 Download Links:\n${details.downloadLinks.join(
-              "\n"
-            )}`
-          );
-          break;
+      await reply(msg);
 
-        case "ep":
-          details = await fetchEpisodeDetails(id);
-          reply(
-            `📺 Episode: *${details.title}*\n\n📥 Download Links:\n${details.downloadLinks.join(
-              "\n"
-            )}`
-          );
-          break;
-
-        default:
-          reply("❌ Invalid type. Use `movie`, `tv`, or `ep`.");
-          break;
+      // Send first available document
+      const firstLink = details.downloadLinks[0].link;
+      if (firstLink) {
+        await sendDocument(gvbud, from, firstLink, details.title);
       }
     } catch (err) {
       console.error("Cinesubz plugin error:", err);
-      reply(`❌ Error fetching details: ${err.message}`);
+      reply(`❌ Error fetching movie: ${err.message}`);
     }
   }
 );
 
-module.exports = { fetchMovieDetails, fetchTVShowDetails, fetchEpisodeDetails };
+module.exports = { fetchMovieDetails };
