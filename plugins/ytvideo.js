@@ -3,11 +3,10 @@ const yts = require("yt-search");
 const fs = require("fs");
 const path = require("path");
 
-// 🟢 download libraries
+// ✅ Valid download libraries
 const ytdl = require("ytdl-core");
 const ytStream = require("yt-stream");
 const ytdlExec = require("youtube-dl-exec");
-const ytdlp = require("ytdlp-nodejs");
 const youtubeDl = require("youtube-dl"); // legacy
 
 cmd(
@@ -18,12 +17,7 @@ cmd(
     category: "download",
     filename: __filename,
   },
-  async (
-    gvbud,
-    mek,
-    m,
-    { from, q, reply }
-  ) => {
+  async (gvbud, mek, m, { from, q, reply }) => {
     try {
       if (!q) return reply("*Provide a name or YouTube link.* 🎥❤️");
 
@@ -51,7 +45,7 @@ cmd(
       );
 
       // 🛠️ 3. Choose downloader by first word in q after link
-      // Example usage: .video <link> ytdl | ytstream | ytdl-exec | ytdlp | ytdl-legacy
+      // Example usage: .video <link> ytdl | ytstream | ytdl-exec | ytdl-legacy
       const parts = q.split(" ");
       const downloader = (parts[1] || "ytdl").toLowerCase();
       const savePath = path.join(__dirname, "yt-video.mp4");
@@ -59,32 +53,23 @@ cmd(
       let buffer;
 
       if (downloader === "ytdl") {
-        // --- ytdl-core ---
+        const chunks = [];
+        const stream = ytdl(url, { quality: "highestvideo" });
+        stream.on("data", c => chunks.push(c));
         buffer = await new Promise((resolve, reject) => {
-          const chunks = [];
-          ytdl(url, { quality: "highestvideo" })
-            .on("data", c => chunks.push(c))
-            .on("end", () => resolve(Buffer.concat(chunks)))
-            .on("error", reject);
+          stream.on("end", () => resolve(Buffer.concat(chunks)));
+          stream.on("error", reject);
         });
 
       } else if (downloader === "ytstream") {
-        // --- yt-stream ---
         const stream = await ytStream.stream(url);
         buffer = await streamToBuffer(stream);
 
       } else if (downloader === "ytdl-exec") {
-        // --- youtube-dl-exec ---
         await ytdlExec(url, { output: savePath });
         buffer = fs.readFileSync(savePath);
 
-      } else if (downloader === "ytdlp") {
-        // --- ytdlp-nodejs ---
-        await ytdlp(url, { output: savePath });
-        buffer = fs.readFileSync(savePath);
-
       } else if (downloader === "ytdl-legacy") {
-        // --- youtube-dl (legacy) ---
         await new Promise((resolve, reject) => {
           youtubeDl.exec(url, ['-o', savePath], {}, (err) => {
             if (err) reject(err);
@@ -94,16 +79,13 @@ cmd(
         buffer = fs.readFileSync(savePath);
 
       } else {
-        return reply("❌ Unknown downloader. Use: ytdl | ytstream | ytdl-exec | ytdlp | ytdl-legacy");
+        return reply("❌ Unknown downloader. Use: ytdl | ytstream | ytdl-exec | ytdl-legacy");
       }
 
       // 4️⃣ Send video
       await gvbud.sendMessage(
         from,
-        {
-          video: buffer,
-          caption: `🎥 *${data.title}*\n\nDownloaded via *${downloader}*`,
-        },
+        { video: buffer, caption: `🎥 *${data.title}*\n\nDownloaded via *${downloader}*` },
         { quoted: mek }
       );
 
