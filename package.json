@@ -34,7 +34,6 @@
     "ytdl-core": "^4.11.5",
     "yt-stream": "^1.4.4",
     "youtube-dl-exec": "^2.0.0",
-    "ytdlp-nodejs": "^1.0.3",
     "youtube-dl": "^3.5.0",
     "youtube-downloader-cc-api": "^1.0.4"
   }
