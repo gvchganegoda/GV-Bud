@@ -11,7 +11,7 @@ cmd(
     filename: __filename,
   },
   async (
-    robin,
+    gvbud,
     mek,
     m,
     { from, quoted, body, isCmd, command, args, q, isGroup, sender, reply }
@@ -28,7 +28,7 @@ cmd(
       const url = data.url;
 
       // 🎥 Video metadata description
-      const desc = `🎥 *ROBIN MAX VIDEO DOWNLOADER* 🎥
+      const desc = `🎥 *gvbud MAX VIDEO DOWNLOADER* 🎥
       
 👻 *Title* : ${data.title}
 👻 *Duration* : ${data.timestamp}
@@ -40,7 +40,7 @@ cmd(
 𝐌𝐚𝐝𝐞 𝐛𝐲 GV-Bud`;
 
       // Send metadata and thumbnail
-      await robin.sendMessage(
+      await gvbud.sendMessage(
         from,
         { image: { url: data.thumbnail }, caption: desc },
         { quoted: mek }
@@ -75,7 +75,7 @@ cmd(
       const quality = "720"; // default: 720p
       const video = await downloadVideo(url, quality);
 
-      await robin.sendMessage(
+      await gvbud.sendMessage(
         from,
         {
           video: video.buffer,
