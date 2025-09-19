@@ -30,34 +30,33 @@ const ownerNumber = ['94787114501'];
 const credsPath = path.join(__dirname, '/auth_info_baileys/creds.json');
 
 async function ensureSessionFile() {
-  if (!fs.existsSync(credsPath)) {
-    if (!config.SESSION_ID) {
-      console.error('❌ SESSION_ID env variable is missing. Cannot restore session.');
-      process.exit(1);
+  if (fs.existsSync(credsPath)) {
+    console.log("✅ Session file found. Connecting...");
+    return connectToWA();
+  }
+
+  if (!config.SESSION_ID) {
+    console.error('❌ SESSION_ID env variable is missing. Cannot restore session.');
+    process.exit(1);
+  }
+
+  try {
+    let data;
+    if (config.SESSION_ID.startsWith('http')) {
+      console.log("🔄 Downloading session file from URL...");
+      const res = await axios.get(config.SESSION_ID, { responseType: 'text' });
+      data = res.data;
+    } else {
+      data = config.SESSION_ID; // assume JSON content
     }
 
-    console.log("🔄 creds.json not found. Downloading session from MEGA...");
-
-    const sessdata = config.SESSION_ID;
-    const filer = File.fromURL(`https://mega.nz/file/${sessdata}`);
-
-    filer.download((err, data) => {
-      if (err) {
-        console.error("❌ Failed to download session file from MEGA:", err);
-        process.exit(1);
-      }
-
-      fs.mkdirSync(path.join(__dirname, '/auth_info_baileys/'), { recursive: true });
-      fs.writeFileSync(credsPath, data);
-      console.log("✅ Session downloaded and saved. Restarting bot...");
-      setTimeout(() => {
-        connectToWA();
-      }, 2000);
-    });
-  } else {
-    setTimeout(() => {
-      connectToWA();
-    }, 1000);
+    fs.mkdirSync(path.dirname(credsPath), { recursive: true });
+    fs.writeFileSync(credsPath, data);
+    console.log("✅ Session file saved. Connecting...");
+    connectToWA();
+  } catch (err) {
+    console.error("❌ Failed to get session file:", err);
+    process.exit(1);
   }
 }
 
@@ -104,14 +103,11 @@ async function connectToWA() {
 
   gvbud.ev.on('messages.upsert', async ({ messages }) => {
     for (const msg of messages) {
-      if (msg.messageStubType === 68) {
-        await gvbud.sendMessageAck(msg.key);
-      }
+      if (msg.messageStubType === 68) await gvbud.sendMessageAck(msg.key);
     }
 
     const mek = messages[0];
     if (!mek || !mek.message) return;
-
     mek.message = getContentType(mek.message) === 'ephemeralMessage' ? mek.message.ephemeralMessage.message : mek.message;
     if (mek.key.remoteJid === 'status@broadcast') return;
 
@@ -163,9 +159,7 @@ async function connectToWA() {
     for (const handler of replyHandlers) {
       if (handler.filter(replyText, { sender, message: mek })) {
         try {
-          await handler.function(gvbud, mek, m, {
-            from, quoted: mek, body: replyText, sender, reply,
-          });
+          await handler.function(gvbud, mek, m, { from, quoted: mek, body: replyText, sender, reply });
           break;
         } catch (e) {
           console.log("Reply handler error:", e);
