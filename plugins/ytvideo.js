@@ -1,16 +1,20 @@
 const { cmd } = require("../command");
-const yts = require("yt-search");
 const fs = require("fs");
 const path = require("path");
 
-// ✅ Use @distube/ytdl-core instead of ytdl-core
+// ✅ Use @distube/ytdl-core for downloading video
 const ytdl = require("@distube/ytdl-core");
+
+// ✅ Use @scrappy-scraper/youtube_scraper for searching YouTube
+const { YoutubeScraper } = require("@scrappy-scraper/youtube_scraper");
+
+const scraper = new YoutubeScraper();
 
 cmd(
   {
     pattern: "video",
     react: "🎥",
-    desc: "Download YouTube Video using @distube/ytdl-core",
+    desc: "Download YouTube Video using @distube/ytdl-core & @scrappy-scraper/youtube_scraper",
     category: "download",
     filename: __filename,
   },
@@ -18,21 +22,20 @@ cmd(
     try {
       if (!q) return reply("*Provide a name or YouTube link.* 🎥❤️");
 
-      // 🔎 Search video
-      const search = await yts(q);
-      if (!search.videos || !search.videos.length)
-        return reply("❌ No videos found.");
+      // 🔎 Search video using scrappy-scraper
+      const results = await scraper.search(q);
+      if (!results || !results.length) return reply("❌ No videos found.");
 
-      const data = search.videos[0];
+      const data = results[0]; // first video result
       const url = data.url;
 
       // 🎥 Send metadata
       const desc = `🎥 *GV-Bud VIDEO DOWNLOADER* 🎥
 👻 *Title* : ${data.title}
-👻 *Duration* : ${data.timestamp}
+👻 *Duration* : ${data.duration}
 👻 *Views* : ${data.views}
-👻 *Uploaded* : ${data.ago}
-👻 *Channel* : ${data.author.name}
+👻 *Uploaded* : ${data.uploaded}
+👻 *Channel* : ${data.channelName}
 👻 *Link* : ${data.url}
 `;
       await gvbud.sendMessage(
@@ -44,8 +47,8 @@ cmd(
       // ⚡ Download video using @distube/ytdl-core
       const chunks = [];
       const stream = ytdl(url, { quality: "highestvideo" });
-
       stream.on("data", chunk => chunks.push(chunk));
+
       const buffer = await new Promise((resolve, reject) => {
         stream.on("end", () => resolve(Buffer.concat(chunks)));
         stream.on("error", reject);
@@ -58,7 +61,7 @@ cmd(
         { quoted: mek }
       );
 
-      reply(`✅ Video sent successfully!`);
+      reply("✅ Video sent successfully!");
 
     } catch (e) {
       console.error(e);
