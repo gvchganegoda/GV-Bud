@@ -1,12 +1,20 @@
 const { cmd } = require("../command");
 const yts = require("yt-search");
-const axios = require("axios");
+const fs = require("fs");
+const path = require("path");
+
+// 🟢 download libraries
+const ytdl = require("ytdl-core");
+const ytStream = require("yt-stream");
+const ytdlExec = require("youtube-dl-exec");
+const ytdlp = require("ytdlp-nodejs");
+const youtubeDl = require("youtube-dl"); // legacy
 
 cmd(
   {
     pattern: "video",
     react: "🎥",
-    desc: "Download YouTube Video",
+    desc: "Download YouTube Video with multiple downloaders",
     category: "download",
     filename: __filename,
   },
@@ -14,12 +22,12 @@ cmd(
     gvbud,
     mek,
     m,
-    { from, quoted, body, isCmd, command, args, q, isGroup, sender, reply }
+    { from, q, reply }
   ) => {
     try {
-      if (!q) return reply("*Provide a name or a YouTube link.* 🎥❤️");
+      if (!q) return reply("*Provide a name or YouTube link.* 🎥❤️");
 
-      // 🔎 Search for the video
+      // 🔎 1. Search video
       const search = await yts(q);
       if (!search.videos || !search.videos.length)
         return reply("❌ No videos found.");
@@ -27,67 +35,93 @@ cmd(
       const data = search.videos[0];
       const url = data.url;
 
-      // 🎥 Video metadata description
-      const desc = `🎥 *gvbud MAX VIDEO DOWNLOADER* 🎥
-      
+      // 🎥 2. Send metadata
+      const desc = `🎥 *GV-Bud MULTI VIDEO DOWNLOADER* 🎥
 👻 *Title* : ${data.title}
 👻 *Duration* : ${data.timestamp}
 👻 *Views* : ${data.views}
 👻 *Uploaded* : ${data.ago}
 👻 *Channel* : ${data.author.name}
 👻 *Link* : ${data.url}
-
-𝐌𝐚𝐝𝐞 𝐛𝐲 GV-Bud`;
-
-      // Send metadata and thumbnail
+`;
       await gvbud.sendMessage(
         from,
         { image: { url: data.thumbnail }, caption: desc },
         { quoted: mek }
       );
 
-      // ⚡ Video download function
-      const downloadVideo = async (url, quality) => {
-        const apiUrl = `https://p.oceansaver.in/ajax/download.php?format=${quality}&url=${encodeURIComponent(
-          url
-        )}&api=dfcb6d76f2f6a9894gjkege8a4ab232222`;
+      // 🛠️ 3. Choose downloader by first word in q after link
+      // Example usage: .video <link> ytdl | ytstream | ytdl-exec | ytdlp | ytdl-legacy
+      const parts = q.split(" ");
+      const downloader = (parts[1] || "ytdl").toLowerCase();
+      const savePath = path.join(__dirname, "yt-video.mp4");
 
-        const response = await axios.get(apiUrl);
-        if (!response.data || !response.data.success)
-          throw new Error("Failed to fetch video details.");
+      let buffer;
 
-        const { id, title } = response.data;
-        const progressUrl = `https://p.oceansaver.in/ajax/progress.php?id=${id}`;
+      if (downloader === "ytdl") {
+        // --- ytdl-core ---
+        buffer = await new Promise((resolve, reject) => {
+          const chunks = [];
+          ytdl(url, { quality: "highestvideo" })
+            .on("data", c => chunks.push(c))
+            .on("end", () => resolve(Buffer.concat(chunks)))
+            .on("error", reject);
+        });
 
-        // Wait until the video is ready
-        while (true) {
-          const progress = await axios.get(progressUrl);
-          if (progress.data.success && progress.data.progress === 1000) {
-            const videoBuffer = await axios.get(progress.data.download_url, {
-              responseType: "arraybuffer",
-            });
-            return { buffer: videoBuffer.data, title };
-          }
-          await new Promise((resolve) => setTimeout(resolve, 5000));
-        }
-      };
+      } else if (downloader === "ytstream") {
+        // --- yt-stream ---
+        const stream = await ytStream.stream(url);
+        buffer = await streamToBuffer(stream);
 
-      const quality = "720"; // default: 720p
-      const video = await downloadVideo(url, quality);
+      } else if (downloader === "ytdl-exec") {
+        // --- youtube-dl-exec ---
+        await ytdlExec(url, { output: savePath });
+        buffer = fs.readFileSync(savePath);
 
+      } else if (downloader === "ytdlp") {
+        // --- ytdlp-nodejs ---
+        await ytdlp(url, { output: savePath });
+        buffer = fs.readFileSync(savePath);
+
+      } else if (downloader === "ytdl-legacy") {
+        // --- youtube-dl (legacy) ---
+        await new Promise((resolve, reject) => {
+          youtubeDl.exec(url, ['-o', savePath], {}, (err) => {
+            if (err) reject(err);
+            else resolve();
+          });
+        });
+        buffer = fs.readFileSync(savePath);
+
+      } else {
+        return reply("❌ Unknown downloader. Use: ytdl | ytstream | ytdl-exec | ytdlp | ytdl-legacy");
+      }
+
+      // 4️⃣ Send video
       await gvbud.sendMessage(
         from,
         {
-          video: video.buffer,
-          caption: `🎥 *${video.title}*\n\n𝐌𝐚𝐝𝐞 𝐛𝐲 GV-Bud`,
+          video: buffer,
+          caption: `🎥 *${data.title}*\n\nDownloaded via *${downloader}*`,
         },
         { quoted: mek }
       );
 
-      reply("*Thanks for using GV-Bud!* 🎥❤️");
+      reply(`✅ Video sent using ${downloader}!`);
+
     } catch (e) {
       console.error(e);
       reply(`❌ Error: ${e.message}`);
     }
   }
 );
+
+// helper to convert a stream to a buffer
+function streamToBuffer(stream) {
+  return new Promise((resolve, reject) => {
+    const chunks = [];
+    stream.on("data", chunk => chunks.push(chunk));
+    stream.on("end", () => resolve(Buffer.concat(chunks)));
+    stream.on("error", reject);
+  });
+}
