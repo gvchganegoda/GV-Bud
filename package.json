@@ -11,7 +11,8 @@
   "dependencies": {
     "@whiskeysockets/baileys": "^7.0.0-rc.2",
     "@xaviabot/fb-downloader": "^1.0.14",
-    "@vreden/youtube_scraper": "^1.2.7",
+    "@scrappy-scraper/youtube_scraper": "^1.0.5",
+    "@distube/ytdl-core": "^4.11.5",
     "api-dylux": "^1.8.5",
     "axios": "^1.12.2",
     "browser-id3-writer": "^6.3.1",
@@ -30,8 +31,6 @@
     "punycode": "^2.3.1",
     "qrcode-terminal": "^0.12.0",
     "tmp": "^0.2.5",
-    "yt-search": "^2.13.1",
-    "@distube/ytdl-core": "^4.11.5",
     "youtube-downloader-cc-api": "^1.0.4"
   }
 }
